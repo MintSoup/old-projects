@@ -1,0 +1,36 @@
+turnon
+	1) hello string
+
+
+1 update/second
+	1) read gps x 2
+	3) wind direction/speed
+	4) altitude (gps, sensor)
+	5) battery
+	6) connected sattelites
+	7) temperaturex2
+	8) know if falling/rising
+		8.1) change update rate based on that
+	9) total travelled distance
+	10) sd card
+
+if t < 0C:
+	spam data quickly, so RF amplifier heats up 
+
+pop baloon
+	--> check if falling, if not pop again x3
+
+signal
+	1) sound
+	2) leds
+	3) shashka
+
+open parachute
+
+test with rope (✔)
+custom pcb (✔)
+//air control
+killswitch
+
+
+	

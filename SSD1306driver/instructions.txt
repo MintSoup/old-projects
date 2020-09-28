@@ -1,0 +1,24 @@
+How to use the library
+1) copy the ssd1306 files to your project
+2) inside the ssd1306.h file, select your correct STM32 series with a #define, make sure the selected I2C port is correct
+3) #include "ssd1306.h"
+4) ssd1306_Init(), to init the display
+5) use the ssd1306_xxxxxxx functions to draw on the framebuffer
+6) ssd1306_Update();
+
+Note: Library assumes the I2C port is correctly set up before calling ssd1306_Init().
+
+
+To use images - 
+1) Get a bitmap image (.bmp file format), make it black and white only. Make sure the color depth is set to 1 bit.
+2) Use image2cpp.html to convert the image to a C array (https://javl.github.io/image2cpp/ online version)
+	a) Import the BMP file
+	b) Select the correct image settings
+	c) In the output section, make sure the output format is set top "plain bytes" and the draw mode to vertical 1bit/pixel
+	d) Click generate code, copy the text into a C array
+3) Use the Image struct along with the ssd1306_DrawImage function to draw the image onto the framebuffer
+	a) If the image seems messed up, make sure the output was set to vertical in image2cpp. Recreate the C array if needed.
+
+
+
+See the Display_F303 example project for more details
