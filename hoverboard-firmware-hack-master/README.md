@@ -3,6 +3,9 @@
 ![](https://raw.githubusercontent.com/NiklasFauth/hoverboard-firmware-hack/master/docs/pictures/armchair.gif)   ![](https://raw.githubusercontent.com/NiklasFauth/hoverboard-firmware-hack/master/docs/pictures/bobbycar.gif)
 ![](https://raw.githubusercontent.com/NiklasFauth/hoverboard-firmware-hack/master/docs/pictures/transpotter.gif)   ![](https://raw.githubusercontent.com/NiklasFauth/hoverboard-firmware-hack/master/docs/pictures/chair.gif)
 
+# My changes
+I modified this exisiting hoverboard firmware so it can receive commands in a custom UART message format to individually control the speeds and directions of the wheels. This was for creating a robot that collects trash. For the first prototype, we used two hoverboards as the wheels in order to avoid having to design everything from scratch for a first prototype.
+
 
 This repo contains open source firmware for generic Hoverboard Mainboards.
 The firmware you can find here allows you to use your Hoverboard Hardware (like the Mainboard, Motors and Battery) for cool projects like driving armchairs, person-tracking transportation robots and every other application you can imagine that requires controlling the Motors.
