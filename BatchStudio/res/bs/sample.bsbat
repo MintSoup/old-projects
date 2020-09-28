@@ -1,0 +1,28 @@
+@echo off
+color bc
+title Untitled
+:menu
+cls
+echo Welcome to {YOUR PROGRAM NAME}
+echo 1) Start
+echo 2) Exit
+echo 3) How to use
+choice /c 123
+if %errorlevel% == 1 goto start
+if %errorlevel% == 2 goto exit
+if %errorlevel% == 3 goto htu
+
+:exit
+cls
+echo Are you sure?(Y/N)
+choice /c yn
+if %errorlevel% == 1 exit
+if %errorlevel% == 2 goto menu
+
+:htu
+cls
+pause>nul
+goto menu
+
+:start
+cls

@@ -1,0 +1,7 @@
+{
+	"state.menu":-1,
+	"state.play":1,
+	"state.gameover":2,
+	"music.timer":"/sounds/timer.wav",
+    "sound.click":"/sounds/click.wav"
+}

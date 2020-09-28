@@ -1,0 +1,137 @@
+{
+
+	"title" : "FUCK YOUGame", 
+	"difficultyIncrease" : 3,
+	"words" : [
+		{
+			"word" : "slug",
+			"mixed" : "sl_g",
+			"answers" : "iauoy",
+			"correct": "u"
+		},
+
+				{
+			"word" : "dark",
+			"mixed" : "d_rk",
+			"answers" : "oyeau",
+			"correct": "a"
+		},
+				{
+			"word" : "lake",
+			"mixed" : "l_ke",
+			"answers" : "yelao",
+			"correct": "a"
+		},
+				{
+			"word" : "cloak",
+			"mixed" : "_loak",
+			"answers" : "kcvob",
+			"correct": "c"
+		},
+				{
+			"word" : "cease",
+			"mixed" : "_ease",
+			"answers" : "qcdze",
+			"correct": "c"
+		},
+		{
+			"word" : "penis",
+			"mixed" : "peni_",
+			"answers" : "scxzj",
+			"correct": "s"
+		},
+      {
+        "word" : "ring",
+        "mixed" : "r_ng",
+        "answers" : "uioye",
+        "correct": "i"
+      },
+      {
+        "word" : "paint",
+        "mixed" : "p_int",
+        "answers" : "eaywh",
+        "correct": "a"
+      },
+      {
+        "word" : "exeat",
+        "mixed" : "ex_at",
+        "answers" : "ioepg",
+        "correct": "e"
+      },
+      {
+        "word" : "flaw",
+        "mixed" : "fl_w",
+        "answers" : "yieah",
+        "correct": "a"
+      },
+      {
+        "word" : "hulk",
+        "mixed" : "hul_",
+        "answers" : "bkmdo",
+        "correct": "k"
+      },
+      {
+        "word" : "huge",
+        "mixed" : "hu_e",
+        "answers" : "cfdgk",
+        "correct": "g"
+      },
+      {
+        "word" : "shame",
+        "mixed" : "sh_me",
+        "answers" : "aieou",
+        "correct": "a"
+      },
+      {
+        "word" : "sight",
+        "mixed" : "si_ht",
+        "answers" : "flmgd",
+        "correct": "g"
+      },
+      {
+        "word" : "truck",
+        "mixed" : "_ruck",
+        "answers" : "sptud",
+        "correct": "t"
+      }, {
+        "word" : "guile",
+        "mixed" : "g_ile",
+        "answers" : "yuora",
+        "correct": "u"
+      },
+      {
+        "word" : "gaunt",
+        "mixed" : "gaun_",
+        "answers" : "etbop",
+        "correct": "t"
+      },
+      {
+        "word" : "hazard",
+        "mixed" : "ha_ard",
+        "answers" : "yzpbn",
+        "correct": "z"
+      },
+      {
+        "word" : "mellow",
+        "mixed" : "mello_",
+        "answers" : "mnkpw",
+        "correct": "w"
+      },
+      {
+        "word" : "parody",
+        "mixed" : "_arody",
+        "answers" : "bmpck",
+        "correct": "p"
+      }
+
+
+
+	]
+
+}
+
+/*
+
+"v1" : "sadasdasd"
+hasdasdasdsd
+*/

@@ -1,0 +1,12 @@
+"Id";"Designator";"Package";"Quantity";"Designation";"Supplier and ref";
+1;"U2";"SOT-223-3_TabPin2";1;"AMS1117-3.3";;;
+2;"J1";"PinHeader_1x04_P2.54mm_Horizontal";1;"Conn_01x04_Male";;;
+3;"Y1";"Crystal_HC49-4H_Vertical";1;"Crystal";;;
+4;"U1";"TSSOP-20_4.4x6.5mm_P0.65mm";1;"STM32F030F4Px";;;
+5;"SW1";"SW_SPST_CK_RS282G05A3";1;"SW_Push";;;
+6;"R3";"R_0603_1608Metric";1;"1k";;;
+7;"R2,R1";"R_0603_1608Metric";2;"10k";;;
+8;"J3,J2";"PinHeader_1x10_P2.54mm_Vertical";2;"Conn_01x10_Male";;;
+9;"D2,D1";"LED_0603_1608Metric";2;"LED";;;
+10;"C6,C4,C3";"C_0603_1608Metric";3;"100n";;;
+11;"C2,C1";"C_0603_1608Metric";2;"15p";;;

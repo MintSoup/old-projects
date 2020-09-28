@@ -1,0 +1,1651 @@
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 1
+
+
+   1              		.syntax unified
+   2              		.cpu cortex-m3
+   3              		.fpu softvfp
+   4              		.eabi_attribute 20, 1
+   5              		.eabi_attribute 21, 1
+   6              		.eabi_attribute 23, 3
+   7              		.eabi_attribute 24, 1
+   8              		.eabi_attribute 25, 1
+   9              		.eabi_attribute 26, 1
+  10              		.eabi_attribute 30, 1
+  11              		.eabi_attribute 34, 1
+  12              		.eabi_attribute 18, 4
+  13              		.thumb
+  14              		.syntax unified
+  15              		.file	"main.c"
+  16              		.text
+  17              	.Ltext0:
+  18              		.cfi_sections	.debug_frame
+  19              		.section	.text.poweroff,"ax",%progbits
+  20              		.align	2
+  21              		.global	poweroff
+  22              		.thumb
+  23              		.thumb_func
+  25              	poweroff:
+  26              	.LFB64:
+  27              		.file 1 "Src/main.c"
+   1:Src/main.c    **** /*
+   2:Src/main.c    ****  * This file is part of the hoverboard-firmware-hack project.
+   3:Src/main.c    ****  *
+   4:Src/main.c    ****  * Copyright (C) 2017-2018 Rene Hopf <renehopf@mac.com>
+   5:Src/main.c    ****  * Copyright (C) 2017-2018 Nico Stute <crinq@crinq.de>
+   6:Src/main.c    ****  * Copyright (C) 2017-2018 Niklas Fauth <niklas.fauth@kit.fail>
+   7:Src/main.c    ****  *
+   8:Src/main.c    ****  * This program is free software: you can redistribute it and/or modify
+   9:Src/main.c    ****  * it under the terms of the GNU General Public License as published by
+  10:Src/main.c    ****  * the Free Software Foundation, either version 3 of the License, or
+  11:Src/main.c    ****  * (at your option) any later version.
+  12:Src/main.c    ****  *
+  13:Src/main.c    ****  * This program is distributed in the hope that it will be useful,
+  14:Src/main.c    ****  * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  15:Src/main.c    ****  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  16:Src/main.c    ****  * GNU General Public License for more details.
+  17:Src/main.c    ****  *
+  18:Src/main.c    ****  * You should have received a copy of the GNU General Public License
+  19:Src/main.c    ****  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  20:Src/main.c    ****  */
+  21:Src/main.c    **** 
+  22:Src/main.c    **** #include "config.h"
+  23:Src/main.c    **** #include "defines.h"
+  24:Src/main.c    **** #include "setup.h"
+  25:Src/main.c    **** #include "stm32f1xx_hal.h"
+  26:Src/main.c    **** //#include "hd44780.h"
+  27:Src/main.c    **** 
+  28:Src/main.c    **** void SystemClock_Config(void);
+  29:Src/main.c    **** 
+  30:Src/main.c    **** extern TIM_HandleTypeDef htim_left;
+  31:Src/main.c    **** extern TIM_HandleTypeDef htim_right;
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 2
+
+
+  32:Src/main.c    **** extern ADC_HandleTypeDef hadc1;
+  33:Src/main.c    **** extern ADC_HandleTypeDef hadc2;
+  34:Src/main.c    **** extern volatile adc_buf_t adc_buffer;
+  35:Src/main.c    **** // LCD_PCF8574_HandleTypeDef lcd;
+  36:Src/main.c    **** extern I2C_HandleTypeDef hi2c2;
+  37:Src/main.c    **** extern UART_HandleTypeDef huart2;
+  38:Src/main.c    **** 
+  39:Src/main.c    **** int cmd1; // normalized input values. -1000 to 1000
+  40:Src/main.c    **** int cmd2;
+  41:Src/main.c    **** int cmd3;
+  42:Src/main.c    **** 
+  43:Src/main.c    **** typedef struct {
+  44:Src/main.c    **** 	uint8_t start_of_frame;
+  45:Src/main.c    **** 	uint8_t speed;
+  46:Src/main.c    **** 	uint8_t checksum;
+  47:Src/main.c    **** } Serialcommand;
+  48:Src/main.c    **** 
+  49:Src/main.c    **** Serialcommand command;
+  50:Src/main.c    **** 
+  51:Src/main.c    **** uint8_t button1, button2;
+  52:Src/main.c    **** 
+  53:Src/main.c    **** int steer; // global variable for steering. -1000 to 1000
+  54:Src/main.c    **** int speed; // global variable for speed. -1000 to 1000
+  55:Src/main.c    **** 
+  56:Src/main.c    **** extern volatile int pwml; // global variable for pwm left. -1000 to 1000
+  57:Src/main.c    **** extern volatile int pwmr; // global variable for pwm right. -1000 to 1000
+  58:Src/main.c    **** extern volatile int
+  59:Src/main.c    **** 	weakl; // global variable for field weakening left. -1000 to 1000
+  60:Src/main.c    **** extern volatile int
+  61:Src/main.c    **** 	weakr; // global variable for field weakening right. -1000 to 1000
+  62:Src/main.c    **** 
+  63:Src/main.c    **** extern uint8_t buzzerFreq; // global variable for the buzzer pitch. can be 1, 2,
+  64:Src/main.c    **** 						   // 3, 4, 5, 6, 7...
+  65:Src/main.c    **** extern uint8_t buzzerPattern; // global variable for the buzzer pattern. can be
+  66:Src/main.c    **** 							  // 1, 2, 3, 4, 5, 6, 7...
+  67:Src/main.c    **** 
+  68:Src/main.c    **** extern uint8_t enable; // global variable for motor enable
+  69:Src/main.c    **** 
+  70:Src/main.c    **** extern volatile uint32_t timeout; // global variable for timeout
+  71:Src/main.c    **** extern float batteryVoltage;	  // global variable for battery voltage
+  72:Src/main.c    **** 
+  73:Src/main.c    **** uint32_t inactivity_timeout_counter;
+  74:Src/main.c    **** uint32_t main_loop_counter;
+  75:Src/main.c    **** 
+  76:Src/main.c    **** int32_t motor_test_direction = 1;
+  77:Src/main.c    **** 
+  78:Src/main.c    **** extern uint8_t nunchuck_data[6];
+  79:Src/main.c    **** #ifdef CONTROL_PPM
+  80:Src/main.c    **** extern volatile uint16_t ppm_captured_value[PPM_NUM_CHANNELS + 1];
+  81:Src/main.c    **** #endif
+  82:Src/main.c    **** 
+  83:Src/main.c    **** int milli_vel_error_sum = 0;
+  84:Src/main.c    **** 
+  85:Src/main.c    **** void poweroff() {
+  28              		.loc 1 85 0
+  29              		.cfi_startproc
+  30              		@ args = 0, pretend = 0, frame = 0
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 3
+
+
+  31              		@ frame_needed = 0, uses_anonymous_args = 0
+  32              	.LBB2:
+  86:Src/main.c    **** #ifndef CONTROL_MOTOR_TEST
+  87:Src/main.c    **** 	if (abs(speed) < 20) {
+  33              		.loc 1 87 0
+  34 0000 0D4B     		ldr	r3, .L8
+  35 0002 1B68     		ldr	r3, [r3]
+  36 0004 1333     		adds	r3, r3, #19
+  37 0006 262B     		cmp	r3, #38
+  38 0008 14D8     		bhi	.L7
+  39              	.LBE2:
+  85:Src/main.c    **** #ifndef CONTROL_MOTOR_TEST
+  40              		.loc 1 85 0
+  41 000a 10B5     		push	{r4, lr}
+  42              	.LCFI0:
+  43              		.cfi_def_cfa_offset 8
+  44              		.cfi_offset 4, -8
+  45              		.cfi_offset 14, -4
+  46              	.LBB4:
+  88:Src/main.c    **** #endif
+  89:Src/main.c    **** 		buzzerPattern = 0;
+  47              		.loc 1 89 0
+  48 000c 0024     		movs	r4, #0
+  49 000e 0B4B     		ldr	r3, .L8+4
+  50 0010 1C70     		strb	r4, [r3]
+  90:Src/main.c    **** 		enable = 0;
+  51              		.loc 1 90 0
+  52 0012 0B4B     		ldr	r3, .L8+8
+  53 0014 1C70     		strb	r4, [r3]
+  54              	.LVL0:
+  55              	.LBB3:
+  91:Src/main.c    **** 		for (int i = 0; i < 8; i++) {
+  56              		.loc 1 91 0
+  57 0016 05E0     		b	.L3
+  58              	.LVL1:
+  59              	.L4:
+  92:Src/main.c    **** 			buzzerFreq = i;
+  60              		.loc 1 92 0 discriminator 3
+  61 0018 0A4B     		ldr	r3, .L8+12
+  62 001a 1C70     		strb	r4, [r3]
+  93:Src/main.c    **** 			HAL_Delay(100);
+  63              		.loc 1 93 0 discriminator 3
+  64 001c 6420     		movs	r0, #100
+  65 001e FFF7FEFF 		bl	HAL_Delay
+  66              	.LVL2:
+  91:Src/main.c    **** 		for (int i = 0; i < 8; i++) {
+  67              		.loc 1 91 0 discriminator 3
+  68 0022 0134     		adds	r4, r4, #1
+  69              	.LVL3:
+  70              	.L3:
+  91:Src/main.c    **** 		for (int i = 0; i < 8; i++) {
+  71              		.loc 1 91 0 is_stmt 0 discriminator 1
+  72 0024 072C     		cmp	r4, #7
+  73 0026 F7DD     		ble	.L4
+  74              	.LBE3:
+  94:Src/main.c    **** 		}
+  95:Src/main.c    **** 		HAL_GPIO_WritePin(OFF_PORT, OFF_PIN, 0);
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 4
+
+
+  75              		.loc 1 95 0 is_stmt 1
+  76 0028 0022     		movs	r2, #0
+  77 002a 2021     		movs	r1, #32
+  78 002c 0648     		ldr	r0, .L8+16
+  79 002e FFF7FEFF 		bl	HAL_GPIO_WritePin
+  80              	.LVL4:
+  81              	.L5:
+  82 0032 FEE7     		b	.L5
+  83              	.LVL5:
+  84              	.L7:
+  85              	.LCFI1:
+  86              		.cfi_def_cfa_offset 0
+  87              		.cfi_restore 4
+  88              		.cfi_restore 14
+  89 0034 7047     		bx	lr
+  90              	.L9:
+  91 0036 00BF     		.align	2
+  92              	.L8:
+  93 0038 00000000 		.word	speed
+  94 003c 00000000 		.word	buzzerPattern
+  95 0040 00000000 		.word	enable
+  96 0044 00000000 		.word	buzzerFreq
+  97 0048 00080140 		.word	1073809408
+  98              	.LBE4:
+  99              		.cfi_endproc
+ 100              	.LFE64:
+ 102              		.section	.text.SystemClock_Config,"ax",%progbits
+ 103              		.align	2
+ 104              		.global	SystemClock_Config
+ 105              		.thumb
+ 106              		.thumb_func
+ 108              	SystemClock_Config:
+ 109              	.LFB66:
+  96:Src/main.c    **** 		while (1) {
+  97:Src/main.c    **** 		}
+  98:Src/main.c    **** #ifndef CONTROL_MOTOR_TEST
+  99:Src/main.c    **** 	}
+ 100:Src/main.c    **** #endif
+ 101:Src/main.c    **** }
+ 102:Src/main.c    **** 
+ 103:Src/main.c    **** int main(void) {
+ 104:Src/main.c    **** 	HAL_Init();
+ 105:Src/main.c    **** 	__HAL_RCC_AFIO_CLK_ENABLE();
+ 106:Src/main.c    **** 	HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
+ 107:Src/main.c    **** 	/* System interrupt init*/
+ 108:Src/main.c    **** 	/* MemoryManagement_IRQn interrupt configuration */
+ 109:Src/main.c    **** 	HAL_NVIC_SetPriority(MemoryManagement_IRQn, 0, 0);
+ 110:Src/main.c    **** 	/* BusFault_IRQn interrupt configuration */
+ 111:Src/main.c    **** 	HAL_NVIC_SetPriority(BusFault_IRQn, 0, 0);
+ 112:Src/main.c    **** 	/* UsageFault_IRQn interrupt configuration */
+ 113:Src/main.c    **** 	HAL_NVIC_SetPriority(UsageFault_IRQn, 0, 0);
+ 114:Src/main.c    **** 	/* SVCall_IRQn interrupt configuration */
+ 115:Src/main.c    **** 	HAL_NVIC_SetPriority(SVCall_IRQn, 0, 0);
+ 116:Src/main.c    **** 	/* DebugMonitor_IRQn interrupt configuration */
+ 117:Src/main.c    **** 	HAL_NVIC_SetPriority(DebugMonitor_IRQn, 0, 0);
+ 118:Src/main.c    **** 	/* PendSV_IRQn interrupt configuration */
+ 119:Src/main.c    **** 	HAL_NVIC_SetPriority(PendSV_IRQn, 0, 0);
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 5
+
+
+ 120:Src/main.c    **** 	/* SysTick_IRQn interrupt configuration */
+ 121:Src/main.c    **** 	HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
+ 122:Src/main.c    **** 
+ 123:Src/main.c    **** 	SystemClock_Config();
+ 124:Src/main.c    **** 
+ 125:Src/main.c    **** 	__HAL_RCC_DMA1_CLK_DISABLE();
+ 126:Src/main.c    **** 	MX_GPIO_Init();
+ 127:Src/main.c    **** 	MX_TIM_Init();
+ 128:Src/main.c    **** 	MX_ADC1_Init();
+ 129:Src/main.c    **** 	MX_ADC2_Init();
+ 130:Src/main.c    **** 
+ 131:Src/main.c    **** #if defined(DEBUG_SERIAL_USART2) || defined(DEBUG_SERIAL_USART3)
+ 132:Src/main.c    **** 	UART_Init();
+ 133:Src/main.c    **** #endif
+ 134:Src/main.c    **** 
+ 135:Src/main.c    **** 	HAL_GPIO_WritePin(OFF_PORT, OFF_PIN, 1);
+ 136:Src/main.c    **** 
+ 137:Src/main.c    **** 	HAL_ADC_Start(&hadc1);
+ 138:Src/main.c    **** 	HAL_ADC_Start(&hadc2);
+ 139:Src/main.c    **** 
+ 140:Src/main.c    **** 	for (int i = 8; i >= 0; i--) {
+ 141:Src/main.c    **** 		buzzerFreq = i;
+ 142:Src/main.c    **** 		HAL_Delay(100);
+ 143:Src/main.c    **** 	}
+ 144:Src/main.c    **** 	buzzerFreq = 0;
+ 145:Src/main.c    **** 
+ 146:Src/main.c    **** 	HAL_GPIO_WritePin(LED_PORT, LED_PIN, 1);
+ 147:Src/main.c    **** 
+ 148:Src/main.c    **** 	int lastSpeedL = 0, lastSpeedR = 0;
+ 149:Src/main.c    **** 	int speedL = 0, speedR = 0;
+ 150:Src/main.c    **** 	float direction = 1;
+ 151:Src/main.c    **** 
+ 152:Src/main.c    **** #ifdef CONTROL_PPM
+ 153:Src/main.c    **** 	PPM_Init();
+ 154:Src/main.c    **** #endif
+ 155:Src/main.c    **** 
+ 156:Src/main.c    **** #ifdef CONTROL_NUNCHUCK
+ 157:Src/main.c    **** 	I2C_Init();
+ 158:Src/main.c    **** 	Nunchuck_Init();
+ 159:Src/main.c    **** #endif
+ 160:Src/main.c    **** 
+ 161:Src/main.c    **** #ifdef CONTROL_SERIAL_USART2
+ 162:Src/main.c    **** 	command.start_of_frame = 0;
+ 163:Src/main.c    **** 	UART_Control_Init();
+ 164:Src/main.c    **** 	HAL_UART_Receive_DMA(&huart2, &command, sizeof(command));
+ 165:Src/main.c    **** #endif
+ 166:Src/main.c    **** 
+ 167:Src/main.c    **** #ifdef DEBUG_I2C_LCD
+ 168:Src/main.c    **** 	I2C_Init();
+ 169:Src/main.c    **** 	HAL_Delay(50);
+ 170:Src/main.c    **** 	lcd.pcf8574.PCF_I2C_ADDRESS = 0x27;
+ 171:Src/main.c    **** 	lcd.pcf8574.PCF_I2C_TIMEOUT = 5;
+ 172:Src/main.c    **** 	lcd.pcf8574.i2c = hi2c2;
+ 173:Src/main.c    **** 	lcd.NUMBER_OF_LINES = NUMBER_OF_LINES_2;
+ 174:Src/main.c    **** 	lcd.type = TYPE0;
+ 175:Src/main.c    **** 
+ 176:Src/main.c    **** 	if (LCD_Init(&lcd) != LCD_OK) {
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 6
+
+
+ 177:Src/main.c    **** 		// error occured
+ 178:Src/main.c    **** 		// TODO while(1);
+ 179:Src/main.c    **** 	}
+ 180:Src/main.c    **** 
+ 181:Src/main.c    **** 	LCD_ClearDisplay(&lcd);
+ 182:Src/main.c    **** 	HAL_Delay(5);
+ 183:Src/main.c    **** 	LCD_SetLocation(&lcd, 0, 0);
+ 184:Src/main.c    **** 	LCD_WriteString(&lcd, "Hover V2.0");
+ 185:Src/main.c    **** 	LCD_SetLocation(&lcd, 0, 1);
+ 186:Src/main.c    **** 	LCD_WriteString(&lcd, "Initializing...");
+ 187:Src/main.c    **** #endif
+ 188:Src/main.c    **** 
+ 189:Src/main.c    **** 	float board_temp_adc_filtered = (float)adc_buffer.temp;
+ 190:Src/main.c    **** 	float board_temp_deg_c;
+ 191:Src/main.c    **** 
+ 192:Src/main.c    **** 	enable = 1; // enable motors
+ 193:Src/main.c    **** 
+ 194:Src/main.c    **** 	while (1) {
+ 195:Src/main.c    **** 		HAL_Delay(DELAY_IN_MAIN_LOOP); // delay in ms
+ 196:Src/main.c    **** 
+ 197:Src/main.c    **** #ifdef CONTROL_NUNCHUCK
+ 198:Src/main.c    **** 		Nunchuck_Read();
+ 199:Src/main.c    **** 		cmd1 =
+ 200:Src/main.c    **** 			CLAMP((nunchuck_data[0] - 127) * 8, -1000,
+ 201:Src/main.c    **** 				  1000); // x - axis. Nunchuck joystick readings range 30 - 230
+ 202:Src/main.c    **** 		cmd2 = CLAMP((nunchuck_data[1] - 128) * 8, -1000, 1000); // y - axis
+ 203:Src/main.c    **** 
+ 204:Src/main.c    **** 		button1 = (uint8_t)nunchuck_data[5] & 1;
+ 205:Src/main.c    **** 		button2 = (uint8_t)(nunchuck_data[5] >> 1) & 1;
+ 206:Src/main.c    **** #endif
+ 207:Src/main.c    **** 
+ 208:Src/main.c    **** #ifdef CONTROL_PPM
+ 209:Src/main.c    **** 		cmd1 = CLAMP((ppm_captured_value[0] - 500) * 2, -1000, 1000);
+ 210:Src/main.c    **** 		cmd2 = CLAMP((ppm_captured_value[1] - 500) * 2, -1000, 1000);
+ 211:Src/main.c    **** 		button1 = ppm_captured_value[5] > 500;
+ 212:Src/main.c    **** 		float scale = ppm_captured_value[2] / 1000.0f;
+ 213:Src/main.c    **** #endif
+ 214:Src/main.c    **** 
+ 215:Src/main.c    **** #ifdef CONTROL_ADC
+ 216:Src/main.c    **** 		// ADC values range: 0-4095, see ADC-calibration in config.h
+ 217:Src/main.c    **** 		cmd1 = CLAMP(adc_buffer.l_tx2 - ADC1_MIN, 0, ADC1_MAX) /
+ 218:Src/main.c    **** 			   (ADC1_MAX / 1000.0f); // ADC1
+ 219:Src/main.c    **** 		cmd2 = CLAMP(adc_buffer.l_rx2 - ADC2_MIN, 0, ADC2_MAX) /
+ 220:Src/main.c    **** 			   (ADC2_MAX / 1000.0f); // ADC2
+ 221:Src/main.c    **** 
+ 222:Src/main.c    **** 		// use ADCs as button inputs:
+ 223:Src/main.c    **** 		button1 = (uint8_t)(adc_buffer.l_tx2 > 2000); // ADC1
+ 224:Src/main.c    **** 		button2 = (uint8_t)(adc_buffer.l_rx2 > 2000); // ADC2
+ 225:Src/main.c    **** 
+ 226:Src/main.c    **** 		timeout = 0;
+ 227:Src/main.c    **** #endif
+ 228:Src/main.c    **** 
+ 229:Src/main.c    **** #ifdef CONTROL_SERIAL_USART2
+ 230:Src/main.c    **** 
+ 231:Src/main.c    **** 
+ 232:Src/main.c    **** 		if (((command.start_of_frame & 0b11111000) == 0b11101000) &&
+ 233:Src/main.c    **** 			(command.checksum == (command.start_of_frame ^ command.speed))) {
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 7
+
+
+ 234:Src/main.c    **** 
+ 235:Src/main.c    **** 			uint8_t wheel = (command.start_of_frame & 0b00000110) >> 1;
+ 236:Src/main.c    **** 			uint8_t reverse = command.start_of_frame & 0b00000001;
+ 237:Src/main.c    **** 
+ 238:Src/main.c    **** 			int outputSpeed = (int)(command.speed * 3.921f);
+ 239:Src/main.c    **** 			if (reverse)
+ 240:Src/main.c    **** 				outputSpeed *= -1;
+ 241:Src/main.c    **** 
+ 242:Src/main.c    **** 			if (wheel == 0b00000000) {
+ 243:Src/main.c    **** 				speedR = outputSpeed;
+ 244:Src/main.c    **** 			} else if (wheel == 0b00000001) {
+ 245:Src/main.c    **** 				speedL = outputSpeed;
+ 246:Src/main.c    **** 			}
+ 247:Src/main.c    **** 
+ 248:Src/main.c    **** 		} else {
+ 249:Src/main.c    **** 			if (main_loop_counter % 25 == 0) {
+ 250:Src/main.c    **** 				HAL_UART_DMAStop(&huart2);
+ 251:Src/main.c    **** 				HAL_UART_Receive_DMA(&huart2, &command, sizeof(command));
+ 252:Src/main.c    **** 			}
+ 253:Src/main.c    **** 		}
+ 254:Src/main.c    **** 
+ 255:Src/main.c    **** 		timeout = 0;
+ 256:Src/main.c    **** #endif
+ 257:Src/main.c    **** 
+ 258:Src/main.c    **** #ifdef CONTROL_MOTOR_TEST
+ 259:Src/main.c    **** 		if (motor_test_direction == 1)
+ 260:Src/main.c    **** 			cmd2 += 1;
+ 261:Src/main.c    **** 		else
+ 262:Src/main.c    **** 			cmd2 -= 1;
+ 263:Src/main.c    **** 		if (abs(cmd2) > CONTROL_MOTOR_TEST_MAX_SPEED)
+ 264:Src/main.c    **** 			motor_test_direction = -motor_test_direction;
+ 265:Src/main.c    **** 
+ 266:Src/main.c    **** 		timeout = 0;
+ 267:Src/main.c    **** #endif
+ 268:Src/main.c    **** 
+ 269:Src/main.c    **** 		// ####### LOW-PASS FILTER #######
+ 270:Src/main.c    **** 		steer = steer * (1.0 - FILTER) + cmd1 * FILTER;
+ 271:Src/main.c    **** 		speed = speed * (1.0 - FILTER) + cmd2 * FILTER;
+ 272:Src/main.c    **** 
+ 273:Src/main.c    **** 		// ####### MIXER #######
+ 274:Src/main.c    **** 		// speedR = CLAMP(speed * SPEED_COEFFICIENT - steer * STEER_COEFFICIENT,
+ 275:Src/main.c    **** 		// 			   -1000, 1000);
+ 276:Src/main.c    **** 		// speedL = CLAMP(speed * SPEED_COEFFICIENT + steer * STEER_COEFFICIENT,
+ 277:Src/main.c    **** 		// 			   -1000, 1000);
+ 278:Src/main.c    **** 
+ 279:Src/main.c    **** #ifdef ADDITIONAL_CODE
+ 280:Src/main.c    **** 		ADDITIONAL_CODE;
+ 281:Src/main.c    **** #endif
+ 282:Src/main.c    **** 
+ 283:Src/main.c    **** 		// ####### SET OUTPUTS #######
+ 284:Src/main.c    **** 		if ((speedL < lastSpeedL + 50 && speedL > lastSpeedL - 50) &&
+ 285:Src/main.c    **** 			(speedR < lastSpeedR + 50 && speedR > lastSpeedR - 50) &&
+ 286:Src/main.c    **** 			timeout < TIMEOUT) {
+ 287:Src/main.c    **** #ifdef INVERT_R_DIRECTION
+ 288:Src/main.c    **** 			pwmr = speedR;
+ 289:Src/main.c    **** #else
+ 290:Src/main.c    **** 			pwmr = -speedR;
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 8
+
+
+ 291:Src/main.c    **** #endif
+ 292:Src/main.c    **** #ifdef INVERT_L_DIRECTION
+ 293:Src/main.c    **** 			pwml = -speedL;
+ 294:Src/main.c    **** #else
+ 295:Src/main.c    **** 			pwml = speedL;
+ 296:Src/main.c    **** #endif
+ 297:Src/main.c    **** 		}
+ 298:Src/main.c    **** 
+ 299:Src/main.c    **** 		lastSpeedL = speedL;
+ 300:Src/main.c    **** 		lastSpeedR = speedR;
+ 301:Src/main.c    **** 
+ 302:Src/main.c    **** 		if (main_loop_counter % 25 == 0) {
+ 303:Src/main.c    **** 			// ####### CALC BOARD TEMPERATURE #######
+ 304:Src/main.c    **** 			board_temp_adc_filtered =
+ 305:Src/main.c    **** 				board_temp_adc_filtered * 0.99 + (float)adc_buffer.temp * 0.01;
+ 306:Src/main.c    **** 			board_temp_deg_c =
+ 307:Src/main.c    **** 				((float)TEMP_CAL_HIGH_DEG_C - (float)TEMP_CAL_LOW_DEG_C) /
+ 308:Src/main.c    **** 					((float)TEMP_CAL_HIGH_ADC - (float)TEMP_CAL_LOW_ADC) *
+ 309:Src/main.c    **** 					(board_temp_adc_filtered - (float)TEMP_CAL_LOW_ADC) +
+ 310:Src/main.c    **** 				(float)TEMP_CAL_LOW_DEG_C;
+ 311:Src/main.c    **** 
+ 312:Src/main.c    **** // ####### DEBUG SERIAL OUT #######
+ 313:Src/main.c    **** #ifdef CONTROL_ADC
+ 314:Src/main.c    **** 			setScopeChannel(0, (int)adc_buffer.l_tx2); // 1: ADC1
+ 315:Src/main.c    **** 			setScopeChannel(1, (int)adc_buffer.l_rx2); // 2: ADC2
+ 316:Src/main.c    **** #endif
+ 317:Src/main.c    **** 			setScopeChannel(2, (int)speedR); // 3: output speed: 0-1000
+ 318:Src/main.c    **** 			setScopeChannel(3, (int)speedL); // 4: output speed: 0-1000
+ 319:Src/main.c    **** 			setScopeChannel(
+ 320:Src/main.c    **** 				4, (int)adc_buffer.batt1); // 5: for battery voltage calibration
+ 321:Src/main.c    **** 			setScopeChannel(
+ 322:Src/main.c    **** 				5,
+ 323:Src/main.c    **** 				(int)(batteryVoltage *
+ 324:Src/main.c    **** 					  100.0f)); // 6: for verifying battery voltage calibration
+ 325:Src/main.c    **** 			setScopeChannel(
+ 326:Src/main.c    **** 				6, (int)board_temp_adc_filtered); // 7: for board temperature
+ 327:Src/main.c    **** 												  // calibration
+ 328:Src/main.c    **** 			setScopeChannel(7,
+ 329:Src/main.c    **** 							(int)board_temp_deg_c); // 8: for verifying board
+ 330:Src/main.c    **** 													// temperature calibration
+ 331:Src/main.c    **** 			consoleScope();
+ 332:Src/main.c    **** 		}
+ 333:Src/main.c    **** 
+ 334:Src/main.c    **** 		// ####### POWEROFF BY POWER-BUTTON #######
+ 335:Src/main.c    **** 		if (HAL_GPIO_ReadPin(BUTTON_PORT, BUTTON_PIN) && weakr == 0 &&
+ 336:Src/main.c    **** 			weakl == 0) {
+ 337:Src/main.c    **** 			enable = 0;
+ 338:Src/main.c    **** 			while (HAL_GPIO_ReadPin(BUTTON_PORT, BUTTON_PIN)) {
+ 339:Src/main.c    **** 			}
+ 340:Src/main.c    **** 			poweroff();
+ 341:Src/main.c    **** 		}
+ 342:Src/main.c    **** 
+ 343:Src/main.c    **** 		// ####### BEEP AND EMERGENCY POWEROFF #######
+ 344:Src/main.c    **** 		if ((TEMP_POWEROFF_ENABLE && board_temp_deg_c >= TEMP_POWEROFF &&
+ 345:Src/main.c    **** 			 abs(speed) < 20) ||
+ 346:Src/main.c    **** 			(batteryVoltage <
+ 347:Src/main.c    **** 				 ((float)BAT_LOW_DEAD * (float)BAT_NUMBER_OF_CELLS) &&
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 9
+
+
+ 348:Src/main.c    **** 			 abs(speed) < 20)) { // poweroff before mainboard burns OR low bat 3
+ 349:Src/main.c    **** 			poweroff();
+ 350:Src/main.c    **** 		} else if (TEMP_WARNING_ENABLE &&
+ 351:Src/main.c    **** 				   board_temp_deg_c >=
+ 352:Src/main.c    **** 					   TEMP_WARNING) { // beep if mainboard gets hot
+ 353:Src/main.c    **** 			buzzerFreq = 4;
+ 354:Src/main.c    **** 			buzzerPattern = 1;
+ 355:Src/main.c    **** 		} else if (batteryVoltage <
+ 356:Src/main.c    **** 					   ((float)BAT_LOW_LVL1 * (float)BAT_NUMBER_OF_CELLS) &&
+ 357:Src/main.c    **** 				   batteryVoltage >
+ 358:Src/main.c    **** 					   ((float)BAT_LOW_LVL2 * (float)BAT_NUMBER_OF_CELLS) &&
+ 359:Src/main.c    **** 				   BAT_LOW_LVL1_ENABLE) { // low bat 1: slow beep
+ 360:Src/main.c    **** 			buzzerFreq = 5;
+ 361:Src/main.c    **** 			buzzerPattern = 42;
+ 362:Src/main.c    **** 		} else if (batteryVoltage <
+ 363:Src/main.c    **** 					   ((float)BAT_LOW_LVL2 * (float)BAT_NUMBER_OF_CELLS) &&
+ 364:Src/main.c    **** 				   batteryVoltage >
+ 365:Src/main.c    **** 					   ((float)BAT_LOW_DEAD * (float)BAT_NUMBER_OF_CELLS) &&
+ 366:Src/main.c    **** 				   BAT_LOW_LVL2_ENABLE) { // low bat 2: fast beep
+ 367:Src/main.c    **** 			buzzerFreq = 5;
+ 368:Src/main.c    **** 			buzzerPattern = 6;
+ 369:Src/main.c    **** 		} else if (BEEPS_BACKWARD && speed < -50) { // backward beep
+ 370:Src/main.c    **** 			buzzerFreq = 5;
+ 371:Src/main.c    **** 			buzzerPattern = 1;
+ 372:Src/main.c    **** 		} else { // do not beep
+ 373:Src/main.c    **** 			buzzerFreq = 0;
+ 374:Src/main.c    **** 			buzzerPattern = 0;
+ 375:Src/main.c    **** 		}
+ 376:Src/main.c    **** 
+ 377:Src/main.c    **** 		// ####### INACTIVITY TIMEOUT #######
+ 378:Src/main.c    **** 		if (abs(speedL) > 50 || abs(speedR) > 50) {
+ 379:Src/main.c    **** 			inactivity_timeout_counter = 0;
+ 380:Src/main.c    **** 		} else {
+ 381:Src/main.c    **** 			inactivity_timeout_counter++;
+ 382:Src/main.c    **** 		}
+ 383:Src/main.c    **** 		if (inactivity_timeout_counter >
+ 384:Src/main.c    **** 			(INACTIVITY_TIMEOUT * 60 * 1000) /
+ 385:Src/main.c    **** 				(DELAY_IN_MAIN_LOOP + 1)) { // rest of main loop needs maybe 1ms
+ 386:Src/main.c    **** 			poweroff();
+ 387:Src/main.c    **** 		}
+ 388:Src/main.c    **** 
+ 389:Src/main.c    **** 		main_loop_counter += 1;
+ 390:Src/main.c    **** 		timeout++;
+ 391:Src/main.c    **** 	}
+ 392:Src/main.c    **** }
+ 393:Src/main.c    **** 
+ 394:Src/main.c    **** /** System Clock Configuration
+ 395:Src/main.c    ****  */
+ 396:Src/main.c    **** void SystemClock_Config(void) {
+ 110              		.loc 1 396 0
+ 111              		.cfi_startproc
+ 112              		@ args = 0, pretend = 0, frame = 88
+ 113              		@ frame_needed = 0, uses_anonymous_args = 0
+ 114 0000 30B5     		push	{r4, r5, lr}
+ 115              	.LCFI2:
+ 116              		.cfi_def_cfa_offset 12
+ 117              		.cfi_offset 4, -12
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 10
+
+
+ 118              		.cfi_offset 5, -8
+ 119              		.cfi_offset 14, -4
+ 120 0002 97B0     		sub	sp, sp, #92
+ 121              	.LCFI3:
+ 122              		.cfi_def_cfa_offset 104
+ 397:Src/main.c    **** 	RCC_OscInitTypeDef RCC_OscInitStruct;
+ 398:Src/main.c    **** 	RCC_ClkInitTypeDef RCC_ClkInitStruct;
+ 399:Src/main.c    **** 	RCC_PeriphCLKInitTypeDef PeriphClkInit;
+ 400:Src/main.c    **** 
+ 401:Src/main.c    **** 	/**Initializes the CPU, AHB and APB busses clocks
+ 402:Src/main.c    **** 	 */
+ 403:Src/main.c    **** 	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+ 123              		.loc 1 403 0
+ 124 0004 0225     		movs	r5, #2
+ 125 0006 0C95     		str	r5, [sp, #48]
+ 404:Src/main.c    **** 	RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+ 126              		.loc 1 404 0
+ 127 0008 0123     		movs	r3, #1
+ 128 000a 1093     		str	r3, [sp, #64]
+ 405:Src/main.c    **** 	RCC_OscInitStruct.HSICalibrationValue = 16;
+ 129              		.loc 1 405 0
+ 130 000c 1023     		movs	r3, #16
+ 131 000e 1193     		str	r3, [sp, #68]
+ 406:Src/main.c    **** 	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+ 132              		.loc 1 406 0
+ 133 0010 1395     		str	r5, [sp, #76]
+ 407:Src/main.c    **** 	RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI_DIV2;
+ 134              		.loc 1 407 0
+ 135 0012 0024     		movs	r4, #0
+ 136 0014 1494     		str	r4, [sp, #80]
+ 408:Src/main.c    **** 	RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL16;
+ 137              		.loc 1 408 0
+ 138 0016 4FF46013 		mov	r3, #3670016
+ 139 001a 1593     		str	r3, [sp, #84]
+ 409:Src/main.c    **** 	HAL_RCC_OscConfig(&RCC_OscInitStruct);
+ 140              		.loc 1 409 0
+ 141 001c 0CA8     		add	r0, sp, #48
+ 142 001e FFF7FEFF 		bl	HAL_RCC_OscConfig
+ 143              	.LVL6:
+ 410:Src/main.c    **** 
+ 411:Src/main.c    **** 	/**Initializes the CPU, AHB and APB busses clocks
+ 412:Src/main.c    **** 	 */
+ 413:Src/main.c    **** 	RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK |
+ 144              		.loc 1 413 0
+ 145 0022 0F23     		movs	r3, #15
+ 146 0024 0793     		str	r3, [sp, #28]
+ 414:Src/main.c    **** 								  RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+ 415:Src/main.c    **** 	RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+ 147              		.loc 1 415 0
+ 148 0026 0895     		str	r5, [sp, #32]
+ 416:Src/main.c    **** 	RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+ 149              		.loc 1 416 0
+ 150 0028 0994     		str	r4, [sp, #36]
+ 417:Src/main.c    **** 	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+ 151              		.loc 1 417 0
+ 152 002a 4FF48063 		mov	r3, #1024
+ 153 002e 0A93     		str	r3, [sp, #40]
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 11
+
+
+ 418:Src/main.c    **** 	RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+ 154              		.loc 1 418 0
+ 155 0030 0B94     		str	r4, [sp, #44]
+ 419:Src/main.c    **** 
+ 420:Src/main.c    **** 	HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2);
+ 156              		.loc 1 420 0
+ 157 0032 2946     		mov	r1, r5
+ 158 0034 07A8     		add	r0, sp, #28
+ 159 0036 FFF7FEFF 		bl	HAL_RCC_ClockConfig
+ 160              	.LVL7:
+ 421:Src/main.c    **** 
+ 422:Src/main.c    **** 	PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_ADC;
+ 161              		.loc 1 422 0
+ 162 003a 0195     		str	r5, [sp, #4]
+ 423:Src/main.c    **** 	PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV8; // 8 MHz
+ 163              		.loc 1 423 0
+ 164 003c 4FF44043 		mov	r3, #49152
+ 165 0040 0393     		str	r3, [sp, #12]
+ 424:Src/main.c    **** 	HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit);
+ 166              		.loc 1 424 0
+ 167 0042 01A8     		add	r0, sp, #4
+ 168 0044 FFF7FEFF 		bl	HAL_RCCEx_PeriphCLKConfig
+ 169              	.LVL8:
+ 425:Src/main.c    **** 
+ 426:Src/main.c    **** 	/**Configure the Systick interrupt time
+ 427:Src/main.c    **** 	 */
+ 428:Src/main.c    **** 	HAL_SYSTICK_Config(HAL_RCC_GetHCLKFreq() / 1000);
+ 170              		.loc 1 428 0
+ 171 0048 FFF7FEFF 		bl	HAL_RCC_GetHCLKFreq
+ 172              	.LVL9:
+ 173 004c 084B     		ldr	r3, .L12
+ 174 004e A3FB0030 		umull	r3, r0, r3, r0
+ 175 0052 8009     		lsrs	r0, r0, #6
+ 176 0054 FFF7FEFF 		bl	HAL_SYSTICK_Config
+ 177              	.LVL10:
+ 429:Src/main.c    **** 
+ 430:Src/main.c    **** 	/**Configure the Systick
+ 431:Src/main.c    **** 	 */
+ 432:Src/main.c    **** 	HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
+ 178              		.loc 1 432 0
+ 179 0058 0420     		movs	r0, #4
+ 180 005a FFF7FEFF 		bl	HAL_SYSTICK_CLKSourceConfig
+ 181              	.LVL11:
+ 433:Src/main.c    **** 
+ 434:Src/main.c    **** 	/* SysTick_IRQn interrupt configuration */
+ 435:Src/main.c    **** 	HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
+ 182              		.loc 1 435 0
+ 183 005e 2246     		mov	r2, r4
+ 184 0060 2146     		mov	r1, r4
+ 185 0062 4FF0FF30 		mov	r0, #-1
+ 186 0066 FFF7FEFF 		bl	HAL_NVIC_SetPriority
+ 187              	.LVL12:
+ 436:Src/main.c    **** }
+ 188              		.loc 1 436 0
+ 189 006a 17B0     		add	sp, sp, #92
+ 190              	.LCFI4:
+ 191              		.cfi_def_cfa_offset 12
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 12
+
+
+ 192              		@ sp needed
+ 193 006c 30BD     		pop	{r4, r5, pc}
+ 194              	.L13:
+ 195 006e 00BF     		.align	2
+ 196              	.L12:
+ 197 0070 D34D6210 		.word	274877907
+ 198              		.cfi_endproc
+ 199              	.LFE66:
+ 201              		.global	__aeabi_ui2f
+ 202              		.global	__aeabi_i2f
+ 203              		.global	__aeabi_fmul
+ 204              		.global	__aeabi_f2iz
+ 205              		.global	__aeabi_i2d
+ 206              		.global	__aeabi_dmul
+ 207              		.global	__aeabi_dadd
+ 208              		.global	__aeabi_d2iz
+ 209              		.global	__aeabi_f2d
+ 210              		.global	__aeabi_d2f
+ 211              		.global	__aeabi_fsub
+ 212              		.global	__aeabi_fadd
+ 213              		.global	__aeabi_fcmplt
+ 214              		.global	__aeabi_fcmpgt
+ 215              		.section	.text.main,"ax",%progbits
+ 216              		.align	2
+ 217              		.global	main
+ 218              		.thumb
+ 219              		.thumb_func
+ 221              	main:
+ 222              	.LFB65:
+ 103:Src/main.c    **** 	HAL_Init();
+ 223              		.loc 1 103 0
+ 224              		.cfi_startproc
+ 225              		@ args = 0, pretend = 0, frame = 8
+ 226              		@ frame_needed = 0, uses_anonymous_args = 0
+ 227 0000 2DE9F04F 		push	{r4, r5, r6, r7, r8, r9, r10, fp, lr}
+ 228              	.LCFI5:
+ 229              		.cfi_def_cfa_offset 36
+ 230              		.cfi_offset 4, -36
+ 231              		.cfi_offset 5, -32
+ 232              		.cfi_offset 6, -28
+ 233              		.cfi_offset 7, -24
+ 234              		.cfi_offset 8, -20
+ 235              		.cfi_offset 9, -16
+ 236              		.cfi_offset 10, -12
+ 237              		.cfi_offset 11, -8
+ 238              		.cfi_offset 14, -4
+ 239 0004 83B0     		sub	sp, sp, #12
+ 240              	.LCFI6:
+ 241              		.cfi_def_cfa_offset 48
+ 104:Src/main.c    **** 	__HAL_RCC_AFIO_CLK_ENABLE();
+ 242              		.loc 1 104 0
+ 243 0006 FFF7FEFF 		bl	HAL_Init
+ 244              	.LVL13:
+ 245              	.LBB5:
+ 105:Src/main.c    **** 	HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
+ 246              		.loc 1 105 0
+ 247 000a 5D4C     		ldr	r4, .L43
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 13
+
+
+ 248 000c A369     		ldr	r3, [r4, #24]
+ 249 000e 43F00103 		orr	r3, r3, #1
+ 250 0012 A361     		str	r3, [r4, #24]
+ 251 0014 A369     		ldr	r3, [r4, #24]
+ 252 0016 03F00103 		and	r3, r3, #1
+ 253 001a 0193     		str	r3, [sp, #4]
+ 254 001c 019B     		ldr	r3, [sp, #4]
+ 255              	.LBE5:
+ 106:Src/main.c    **** 	/* System interrupt init*/
+ 256              		.loc 1 106 0
+ 257 001e 0320     		movs	r0, #3
+ 258 0020 FFF7FEFF 		bl	HAL_NVIC_SetPriorityGrouping
+ 259              	.LVL14:
+ 109:Src/main.c    **** 	/* BusFault_IRQn interrupt configuration */
+ 260              		.loc 1 109 0
+ 261 0024 0022     		movs	r2, #0
+ 262 0026 1146     		mov	r1, r2
+ 263 0028 6FF00B00 		mvn	r0, #11
+ 264 002c FFF7FEFF 		bl	HAL_NVIC_SetPriority
+ 265              	.LVL15:
+ 111:Src/main.c    **** 	/* UsageFault_IRQn interrupt configuration */
+ 266              		.loc 1 111 0
+ 267 0030 0022     		movs	r2, #0
+ 268 0032 1146     		mov	r1, r2
+ 269 0034 6FF00A00 		mvn	r0, #10
+ 270 0038 FFF7FEFF 		bl	HAL_NVIC_SetPriority
+ 271              	.LVL16:
+ 113:Src/main.c    **** 	/* SVCall_IRQn interrupt configuration */
+ 272              		.loc 1 113 0
+ 273 003c 0022     		movs	r2, #0
+ 274 003e 1146     		mov	r1, r2
+ 275 0040 6FF00900 		mvn	r0, #9
+ 276 0044 FFF7FEFF 		bl	HAL_NVIC_SetPriority
+ 277              	.LVL17:
+ 115:Src/main.c    **** 	/* DebugMonitor_IRQn interrupt configuration */
+ 278              		.loc 1 115 0
+ 279 0048 0022     		movs	r2, #0
+ 280 004a 1146     		mov	r1, r2
+ 281 004c 6FF00400 		mvn	r0, #4
+ 282 0050 FFF7FEFF 		bl	HAL_NVIC_SetPriority
+ 283              	.LVL18:
+ 117:Src/main.c    **** 	/* PendSV_IRQn interrupt configuration */
+ 284              		.loc 1 117 0
+ 285 0054 0022     		movs	r2, #0
+ 286 0056 1146     		mov	r1, r2
+ 287 0058 6FF00300 		mvn	r0, #3
+ 288 005c FFF7FEFF 		bl	HAL_NVIC_SetPriority
+ 289              	.LVL19:
+ 119:Src/main.c    **** 	/* SysTick_IRQn interrupt configuration */
+ 290              		.loc 1 119 0
+ 291 0060 0022     		movs	r2, #0
+ 292 0062 1146     		mov	r1, r2
+ 293 0064 6FF00100 		mvn	r0, #1
+ 294 0068 FFF7FEFF 		bl	HAL_NVIC_SetPriority
+ 295              	.LVL20:
+ 121:Src/main.c    **** 
+ 296              		.loc 1 121 0
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 14
+
+
+ 297 006c 0022     		movs	r2, #0
+ 298 006e 1146     		mov	r1, r2
+ 299 0070 4FF0FF30 		mov	r0, #-1
+ 300 0074 FFF7FEFF 		bl	HAL_NVIC_SetPriority
+ 301              	.LVL21:
+ 123:Src/main.c    **** 
+ 302              		.loc 1 123 0
+ 303 0078 FFF7FEFF 		bl	SystemClock_Config
+ 304              	.LVL22:
+ 125:Src/main.c    **** 	MX_GPIO_Init();
+ 305              		.loc 1 125 0
+ 306 007c 6369     		ldr	r3, [r4, #20]
+ 307 007e 23F00103 		bic	r3, r3, #1
+ 308 0082 6361     		str	r3, [r4, #20]
+ 126:Src/main.c    **** 	MX_TIM_Init();
+ 309              		.loc 1 126 0
+ 310 0084 FFF7FEFF 		bl	MX_GPIO_Init
+ 311              	.LVL23:
+ 127:Src/main.c    **** 	MX_ADC1_Init();
+ 312              		.loc 1 127 0
+ 313 0088 FFF7FEFF 		bl	MX_TIM_Init
+ 314              	.LVL24:
+ 128:Src/main.c    **** 	MX_ADC2_Init();
+ 315              		.loc 1 128 0
+ 316 008c FFF7FEFF 		bl	MX_ADC1_Init
+ 317              	.LVL25:
+ 129:Src/main.c    **** 
+ 318              		.loc 1 129 0
+ 319 0090 FFF7FEFF 		bl	MX_ADC2_Init
+ 320              	.LVL26:
+ 132:Src/main.c    **** #endif
+ 321              		.loc 1 132 0
+ 322 0094 FFF7FEFF 		bl	UART_Init
+ 323              	.LVL27:
+ 135:Src/main.c    **** 
+ 324              		.loc 1 135 0
+ 325 0098 0122     		movs	r2, #1
+ 326 009a 2021     		movs	r1, #32
+ 327 009c 3948     		ldr	r0, .L43+4
+ 328 009e FFF7FEFF 		bl	HAL_GPIO_WritePin
+ 329              	.LVL28:
+ 137:Src/main.c    **** 	HAL_ADC_Start(&hadc2);
+ 330              		.loc 1 137 0
+ 331 00a2 3948     		ldr	r0, .L43+8
+ 332 00a4 FFF7FEFF 		bl	HAL_ADC_Start
+ 333              	.LVL29:
+ 138:Src/main.c    **** 
+ 334              		.loc 1 138 0
+ 335 00a8 3848     		ldr	r0, .L43+12
+ 336 00aa FFF7FEFF 		bl	HAL_ADC_Start
+ 337              	.LVL30:
+ 338              	.LBB6:
+ 140:Src/main.c    **** 		buzzerFreq = i;
+ 339              		.loc 1 140 0
+ 340 00ae 0824     		movs	r4, #8
+ 341 00b0 05E0     		b	.L15
+ 342              	.LVL31:
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 15
+
+
+ 343              	.L16:
+ 141:Src/main.c    **** 		HAL_Delay(100);
+ 344              		.loc 1 141 0 discriminator 3
+ 345 00b2 374B     		ldr	r3, .L43+16
+ 346 00b4 1C70     		strb	r4, [r3]
+ 142:Src/main.c    **** 	}
+ 347              		.loc 1 142 0 discriminator 3
+ 348 00b6 6420     		movs	r0, #100
+ 349 00b8 FFF7FEFF 		bl	HAL_Delay
+ 350              	.LVL32:
+ 140:Src/main.c    **** 		buzzerFreq = i;
+ 351              		.loc 1 140 0 discriminator 3
+ 352 00bc 013C     		subs	r4, r4, #1
+ 353              	.LVL33:
+ 354              	.L15:
+ 140:Src/main.c    **** 		buzzerFreq = i;
+ 355              		.loc 1 140 0 is_stmt 0 discriminator 1
+ 356 00be 002C     		cmp	r4, #0
+ 357 00c0 F7DA     		bge	.L16
+ 358              	.LBE6:
+ 144:Src/main.c    **** 
+ 359              		.loc 1 144 0 is_stmt 1
+ 360 00c2 0025     		movs	r5, #0
+ 361 00c4 324B     		ldr	r3, .L43+16
+ 362 00c6 1D70     		strb	r5, [r3]
+ 146:Src/main.c    **** 
+ 363              		.loc 1 146 0
+ 364 00c8 0122     		movs	r2, #1
+ 365 00ca 0421     		movs	r1, #4
+ 366 00cc 3148     		ldr	r0, .L43+20
+ 367 00ce FFF7FEFF 		bl	HAL_GPIO_WritePin
+ 368              	.LVL34:
+ 162:Src/main.c    **** 	UART_Control_Init();
+ 369              		.loc 1 162 0
+ 370 00d2 314C     		ldr	r4, .L43+24
+ 371              	.LVL35:
+ 372 00d4 2570     		strb	r5, [r4]
+ 163:Src/main.c    **** 	HAL_UART_Receive_DMA(&huart2, &command, sizeof(command));
+ 373              		.loc 1 163 0
+ 374 00d6 FFF7FEFF 		bl	UART_Control_Init
+ 375              	.LVL36:
+ 164:Src/main.c    **** #endif
+ 376              		.loc 1 164 0
+ 377 00da 0322     		movs	r2, #3
+ 378 00dc 2146     		mov	r1, r4
+ 379 00de 2F48     		ldr	r0, .L43+28
+ 380 00e0 FFF7FEFF 		bl	HAL_UART_Receive_DMA
+ 381              	.LVL37:
+ 189:Src/main.c    **** 	float board_temp_deg_c;
+ 382              		.loc 1 189 0
+ 383 00e4 2E4B     		ldr	r3, .L43+32
+ 384 00e6 188A     		ldrh	r0, [r3, #16]
+ 385 00e8 80B2     		uxth	r0, r0
+ 386 00ea FFF7FEFF 		bl	__aeabi_ui2f
+ 387              	.LVL38:
+ 388 00ee 8246     		mov	r10, r0
+ 389              	.LVL39:
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 16
+
+
+ 192:Src/main.c    **** 
+ 390              		.loc 1 192 0
+ 391 00f0 0122     		movs	r2, #1
+ 392 00f2 2C4B     		ldr	r3, .L43+36
+ 393 00f4 1A70     		strb	r2, [r3]
+ 148:Src/main.c    **** 	int speedL = 0, speedR = 0;
+ 394              		.loc 1 148 0
+ 395 00f6 2F46     		mov	r7, r5
+ 396              	.LVL40:
+ 397              	.L35:
+ 195:Src/main.c    **** 
+ 398              		.loc 1 195 0
+ 399 00f8 0520     		movs	r0, #5
+ 400 00fa FFF7FEFF 		bl	HAL_Delay
+ 401              	.LVL41:
+ 232:Src/main.c    **** 			(command.checksum == (command.start_of_frame ^ command.speed))) {
+ 402              		.loc 1 232 0
+ 403 00fe 264B     		ldr	r3, .L43+24
+ 404 0100 1B78     		ldrb	r3, [r3]	@ zero_extendqisi2
+ 405 0102 03F0F802 		and	r2, r3, #248
+ 406 0106 E82A     		cmp	r2, #232
+ 407 0108 1DD1     		bne	.L17
+ 233:Src/main.c    **** 
+ 408              		.loc 1 233 0 discriminator 1
+ 409 010a 234A     		ldr	r2, .L43+24
+ 410 010c 9178     		ldrb	r1, [r2, #2]	@ zero_extendqisi2
+ 411 010e 5078     		ldrb	r0, [r2, #1]	@ zero_extendqisi2
+ 412 0110 83EA0002 		eor	r2, r3, r0
+ 232:Src/main.c    **** 			(command.checksum == (command.start_of_frame ^ command.speed))) {
+ 413              		.loc 1 232 0 discriminator 1
+ 414 0114 9142     		cmp	r1, r2
+ 415 0116 16D1     		bne	.L17
+ 416              	.LBB7:
+ 235:Src/main.c    **** 			uint8_t reverse = command.start_of_frame & 0b00000001;
+ 417              		.loc 1 235 0
+ 418 0118 C3F34108 		ubfx	r8, r3, #1, #2
+ 419              	.LVL42:
+ 236:Src/main.c    **** 
+ 420              		.loc 1 236 0
+ 421 011c 03F00104 		and	r4, r3, #1
+ 422              	.LVL43:
+ 238:Src/main.c    **** 			if (reverse)
+ 423              		.loc 1 238 0
+ 424 0120 FFF7FEFF 		bl	__aeabi_i2f
+ 425              	.LVL44:
+ 426 0124 2049     		ldr	r1, .L43+40
+ 427 0126 FFF7FEFF 		bl	__aeabi_fmul
+ 428              	.LVL45:
+ 429 012a FFF7FEFF 		bl	__aeabi_f2iz
+ 430              	.LVL46:
+ 431 012e 0646     		mov	r6, r0
+ 432              	.LVL47:
+ 239:Src/main.c    **** 				outputSpeed *= -1;
+ 433              		.loc 1 239 0
+ 434 0130 04B1     		cbz	r4, .L18
+ 240:Src/main.c    **** 
+ 435              		.loc 1 240 0
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 17
+
+
+ 436 0132 4642     		negs	r6, r0
+ 437              	.LVL48:
+ 438              	.L18:
+ 242:Src/main.c    **** 				speedR = outputSpeed;
+ 439              		.loc 1 242 0
+ 440 0134 B8F1000F 		cmp	r8, #0
+ 441 0138 1DD0     		beq	.L36
+ 244:Src/main.c    **** 				speedL = outputSpeed;
+ 442              		.loc 1 244 0
+ 443 013a B8F1010F 		cmp	r8, #1
+ 444 013e 1CD0     		beq	.L37
+ 445 0140 3E46     		mov	r6, r7
+ 446              	.LVL49:
+ 447 0142 2C46     		mov	r4, r5
+ 448              	.LVL50:
+ 449 0144 38E0     		b	.L19
+ 450              	.LVL51:
+ 451              	.L17:
+ 452              	.LBE7:
+ 249:Src/main.c    **** 				HAL_UART_DMAStop(&huart2);
+ 453              		.loc 1 249 0
+ 454 0146 194B     		ldr	r3, .L43+44
+ 455 0148 1A68     		ldr	r2, [r3]
+ 456 014a 194B     		ldr	r3, .L43+48
+ 457 014c A3FB0213 		umull	r1, r3, r3, r2
+ 458 0150 DB08     		lsrs	r3, r3, #3
+ 459 0152 03EB8303 		add	r3, r3, r3, lsl #2
+ 460 0156 03EB8303 		add	r3, r3, r3, lsl #2
+ 461 015a 9A42     		cmp	r2, r3
+ 462 015c 2AD1     		bne	.L38
+ 250:Src/main.c    **** 				HAL_UART_Receive_DMA(&huart2, &command, sizeof(command));
+ 463              		.loc 1 250 0
+ 464 015e 0F4C     		ldr	r4, .L43+28
+ 465 0160 2046     		mov	r0, r4
+ 466 0162 FFF7FEFF 		bl	HAL_UART_DMAStop
+ 467              	.LVL52:
+ 251:Src/main.c    **** 			}
+ 468              		.loc 1 251 0
+ 469 0166 0322     		movs	r2, #3
+ 470 0168 0B49     		ldr	r1, .L43+24
+ 471 016a 2046     		mov	r0, r4
+ 472 016c FFF7FEFF 		bl	HAL_UART_Receive_DMA
+ 473              	.LVL53:
+ 474 0170 3E46     		mov	r6, r7
+ 475 0172 2C46     		mov	r4, r5
+ 476 0174 20E0     		b	.L19
+ 477              	.LVL54:
+ 478              	.L36:
+ 479              	.LBB8:
+ 480 0176 2C46     		mov	r4, r5
+ 481              	.LVL55:
+ 482 0178 1EE0     		b	.L19
+ 483              	.LVL56:
+ 484              	.L37:
+ 245:Src/main.c    **** 			}
+ 485              		.loc 1 245 0
+ 486 017a 3446     		mov	r4, r6
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 18
+
+
+ 487              	.LVL57:
+ 488 017c 3E46     		mov	r6, r7
+ 489              	.LVL58:
+ 490 017e 1BE0     		b	.L19
+ 491              	.L44:
+ 492              		.align	2
+ 493              	.L43:
+ 494 0180 00100240 		.word	1073876992
+ 495 0184 00080140 		.word	1073809408
+ 496 0188 00000000 		.word	hadc1
+ 497 018c 00000000 		.word	hadc2
+ 498 0190 00000000 		.word	buzzerFreq
+ 499 0194 000C0140 		.word	1073810432
+ 500 0198 00000000 		.word	command
+ 501 019c 00000000 		.word	huart2
+ 502 01a0 00000000 		.word	adc_buffer
+ 503 01a4 00000000 		.word	enable
+ 504 01a8 AAF17A40 		.word	1081799082
+ 505 01ac 00000000 		.word	main_loop_counter
+ 506 01b0 1F85EB51 		.word	1374389535
+ 507              	.LVL59:
+ 508              	.L38:
+ 509              	.LBE8:
+ 510 01b4 3E46     		mov	r6, r7
+ 511 01b6 2C46     		mov	r4, r5
+ 512              	.L19:
+ 513              	.LVL60:
+ 255:Src/main.c    **** #endif
+ 514              		.loc 1 255 0
+ 515 01b8 0022     		movs	r2, #0
+ 516 01ba 994B     		ldr	r3, .L45+32
+ 517 01bc 1A60     		str	r2, [r3]
+ 270:Src/main.c    **** 		speed = speed * (1.0 - FILTER) + cmd2 * FILTER;
+ 518              		.loc 1 270 0
+ 519 01be DFF8C0B2 		ldr	fp, .L45+128
+ 520 01c2 DBF80000 		ldr	r0, [fp]
+ 521 01c6 FFF7FEFF 		bl	__aeabi_i2d
+ 522              	.LVL61:
+ 523 01ca 8DA3     		adr	r3, .L45
+ 524 01cc D3E90023 		ldrd	r2, [r3]
+ 525 01d0 FFF7FEFF 		bl	__aeabi_dmul
+ 526              	.LVL62:
+ 527 01d4 8046     		mov	r8, r0
+ 528 01d6 8946     		mov	r9, r1
+ 529 01d8 924B     		ldr	r3, .L45+36
+ 530 01da 1868     		ldr	r0, [r3]
+ 531 01dc FFF7FEFF 		bl	__aeabi_i2d
+ 532              	.LVL63:
+ 533 01e0 89A3     		adr	r3, .L45+8
+ 534 01e2 D3E90023 		ldrd	r2, [r3]
+ 535 01e6 FFF7FEFF 		bl	__aeabi_dmul
+ 536              	.LVL64:
+ 537 01ea 0246     		mov	r2, r0
+ 538 01ec 0B46     		mov	r3, r1
+ 539 01ee 4046     		mov	r0, r8
+ 540 01f0 4946     		mov	r1, r9
+ 541 01f2 FFF7FEFF 		bl	__aeabi_dadd
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 19
+
+
+ 542              	.LVL65:
+ 543 01f6 FFF7FEFF 		bl	__aeabi_d2iz
+ 544              	.LVL66:
+ 545 01fa CBF80000 		str	r0, [fp]
+ 271:Src/main.c    **** 
+ 546              		.loc 1 271 0
+ 547 01fe DFF868B2 		ldr	fp, .L45+104
+ 548 0202 DBF80000 		ldr	r0, [fp]
+ 549 0206 FFF7FEFF 		bl	__aeabi_i2d
+ 550              	.LVL67:
+ 551 020a 7DA3     		adr	r3, .L45
+ 552 020c D3E90023 		ldrd	r2, [r3]
+ 553 0210 FFF7FEFF 		bl	__aeabi_dmul
+ 554              	.LVL68:
+ 555 0214 8046     		mov	r8, r0
+ 556 0216 8946     		mov	r9, r1
+ 557 0218 834B     		ldr	r3, .L45+40
+ 558 021a 1868     		ldr	r0, [r3]
+ 559 021c FFF7FEFF 		bl	__aeabi_i2d
+ 560              	.LVL69:
+ 561 0220 79A3     		adr	r3, .L45+8
+ 562 0222 D3E90023 		ldrd	r2, [r3]
+ 563 0226 FFF7FEFF 		bl	__aeabi_dmul
+ 564              	.LVL70:
+ 565 022a 0246     		mov	r2, r0
+ 566 022c 0B46     		mov	r3, r1
+ 567 022e 4046     		mov	r0, r8
+ 568 0230 4946     		mov	r1, r9
+ 569 0232 FFF7FEFF 		bl	__aeabi_dadd
+ 570              	.LVL71:
+ 571 0236 FFF7FEFF 		bl	__aeabi_d2iz
+ 572              	.LVL72:
+ 573 023a CBF80000 		str	r0, [fp]
+ 284:Src/main.c    **** 			(speedR < lastSpeedR + 50 && speedR > lastSpeedR - 50) &&
+ 574              		.loc 1 284 0
+ 575 023e 05F13203 		add	r3, r5, #50
+ 576 0242 9C42     		cmp	r4, r3
+ 577 0244 12DA     		bge	.L20
+ 284:Src/main.c    **** 			(speedR < lastSpeedR + 50 && speedR > lastSpeedR - 50) &&
+ 578              		.loc 1 284 0 is_stmt 0 discriminator 1
+ 579 0246 323D     		subs	r5, r5, #50
+ 580              	.LVL73:
+ 581 0248 AC42     		cmp	r4, r5
+ 582 024a 0FDD     		ble	.L20
+ 285:Src/main.c    **** 			timeout < TIMEOUT) {
+ 583              		.loc 1 285 0 is_stmt 1 discriminator 2
+ 584 024c 07F13203 		add	r3, r7, #50
+ 284:Src/main.c    **** 			(speedR < lastSpeedR + 50 && speedR > lastSpeedR - 50) &&
+ 585              		.loc 1 284 0 discriminator 2
+ 586 0250 9E42     		cmp	r6, r3
+ 587 0252 0BDA     		bge	.L20
+ 285:Src/main.c    **** 			timeout < TIMEOUT) {
+ 588              		.loc 1 285 0
+ 589 0254 323F     		subs	r7, r7, #50
+ 590              	.LVL74:
+ 591 0256 BE42     		cmp	r6, r7
+ 592 0258 08DD     		ble	.L20
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 20
+
+
+ 286:Src/main.c    **** #ifdef INVERT_R_DIRECTION
+ 593              		.loc 1 286 0 discriminator 1
+ 594 025a 714B     		ldr	r3, .L45+32
+ 595 025c 1B68     		ldr	r3, [r3]
+ 285:Src/main.c    **** 			timeout < TIMEOUT) {
+ 596              		.loc 1 285 0 discriminator 1
+ 597 025e 042B     		cmp	r3, #4
+ 598 0260 04D8     		bhi	.L20
+ 288:Src/main.c    **** #else
+ 599              		.loc 1 288 0
+ 600 0262 724B     		ldr	r3, .L45+44
+ 601 0264 1E60     		str	r6, [r3]
+ 293:Src/main.c    **** #else
+ 602              		.loc 1 293 0
+ 603 0266 6342     		negs	r3, r4
+ 604 0268 714A     		ldr	r2, .L45+48
+ 605 026a 1360     		str	r3, [r2]
+ 606              	.LVL75:
+ 607              	.L20:
+ 302:Src/main.c    **** 			// ####### CALC BOARD TEMPERATURE #######
+ 608              		.loc 1 302 0
+ 609 026c 714B     		ldr	r3, .L45+52
+ 610 026e 1A68     		ldr	r2, [r3]
+ 611 0270 714B     		ldr	r3, .L45+56
+ 612 0272 A3FB0213 		umull	r1, r3, r3, r2
+ 613 0276 DB08     		lsrs	r3, r3, #3
+ 614 0278 03EB8303 		add	r3, r3, r3, lsl #2
+ 615 027c 03EB8303 		add	r3, r3, r3, lsl #2
+ 616 0280 9A42     		cmp	r2, r3
+ 617 0282 50D1     		bne	.L21
+ 618              	.LBB9:
+ 305:Src/main.c    **** 			board_temp_deg_c =
+ 619              		.loc 1 305 0
+ 620 0284 5046     		mov	r0, r10
+ 621 0286 FFF7FEFF 		bl	__aeabi_f2d
+ 622              	.LVL76:
+ 623 028a 61A3     		adr	r3, .L45+16
+ 624 028c D3E90023 		ldrd	r2, [r3]
+ 625 0290 FFF7FEFF 		bl	__aeabi_dmul
+ 626              	.LVL77:
+ 627 0294 8046     		mov	r8, r0
+ 628 0296 8946     		mov	r9, r1
+ 629 0298 684D     		ldr	r5, .L45+60
+ 630 029a 288A     		ldrh	r0, [r5, #16]
+ 631 029c 80B2     		uxth	r0, r0
+ 632 029e FFF7FEFF 		bl	__aeabi_ui2f
+ 633              	.LVL78:
+ 634 02a2 FFF7FEFF 		bl	__aeabi_f2d
+ 635              	.LVL79:
+ 636 02a6 5CA3     		adr	r3, .L45+24
+ 637 02a8 D3E90023 		ldrd	r2, [r3]
+ 638 02ac FFF7FEFF 		bl	__aeabi_dmul
+ 639              	.LVL80:
+ 640 02b0 0246     		mov	r2, r0
+ 641 02b2 0B46     		mov	r3, r1
+ 642 02b4 4046     		mov	r0, r8
+ 643 02b6 4946     		mov	r1, r9
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 21
+
+
+ 644 02b8 FFF7FEFF 		bl	__aeabi_dadd
+ 645              	.LVL81:
+ 304:Src/main.c    **** 				board_temp_adc_filtered * 0.99 + (float)adc_buffer.temp * 0.01;
+ 646              		.loc 1 304 0
+ 647 02bc FFF7FEFF 		bl	__aeabi_d2f
+ 648              	.LVL82:
+ 649 02c0 8246     		mov	r10, r0
+ 650              	.LVL83:
+ 309:Src/main.c    **** 				(float)TEMP_CAL_LOW_DEG_C;
+ 651              		.loc 1 309 0
+ 652 02c2 5F49     		ldr	r1, .L45+64
+ 653 02c4 FFF7FEFF 		bl	__aeabi_fsub
+ 654              	.LVL84:
+ 308:Src/main.c    **** 					(board_temp_adc_filtered - (float)TEMP_CAL_LOW_ADC) +
+ 655              		.loc 1 308 0
+ 656 02c8 5E49     		ldr	r1, .L45+68
+ 657 02ca FFF7FEFF 		bl	__aeabi_fmul
+ 658              	.LVL85:
+ 306:Src/main.c    **** 				((float)TEMP_CAL_HIGH_DEG_C - (float)TEMP_CAL_LOW_DEG_C) /
+ 659              		.loc 1 306 0
+ 660 02ce 5E49     		ldr	r1, .L45+72
+ 661 02d0 FFF7FEFF 		bl	__aeabi_fadd
+ 662              	.LVL86:
+ 663 02d4 0746     		mov	r7, r0
+ 664              	.LVL87:
+ 317:Src/main.c    **** 			setScopeChannel(3, (int)speedL); // 4: output speed: 0-1000
+ 665              		.loc 1 317 0
+ 666 02d6 3146     		mov	r1, r6
+ 667 02d8 0220     		movs	r0, #2
+ 668              	.LVL88:
+ 669 02da FFF7FEFF 		bl	setScopeChannel
+ 670              	.LVL89:
+ 318:Src/main.c    **** 			setScopeChannel(
+ 671              		.loc 1 318 0
+ 672 02de 2146     		mov	r1, r4
+ 673 02e0 0320     		movs	r0, #3
+ 674 02e2 FFF7FEFF 		bl	setScopeChannel
+ 675              	.LVL90:
+ 320:Src/main.c    **** 			setScopeChannel(
+ 676              		.loc 1 320 0
+ 677 02e6 A989     		ldrh	r1, [r5, #12]
+ 319:Src/main.c    **** 				4, (int)adc_buffer.batt1); // 5: for battery voltage calibration
+ 678              		.loc 1 319 0
+ 679 02e8 89B2     		uxth	r1, r1
+ 680 02ea 0420     		movs	r0, #4
+ 681 02ec FFF7FEFF 		bl	setScopeChannel
+ 682              	.LVL91:
+ 323:Src/main.c    **** 					  100.0f)); // 6: for verifying battery voltage calibration
+ 683              		.loc 1 323 0
+ 684 02f0 5649     		ldr	r1, .L45+76
+ 685 02f2 574B     		ldr	r3, .L45+80
+ 686 02f4 1868     		ldr	r0, [r3]	@ float
+ 687 02f6 FFF7FEFF 		bl	__aeabi_fmul
+ 688              	.LVL92:
+ 321:Src/main.c    **** 				5,
+ 689              		.loc 1 321 0
+ 690 02fa FFF7FEFF 		bl	__aeabi_f2iz
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 22
+
+
+ 691              	.LVL93:
+ 692 02fe 0146     		mov	r1, r0
+ 693 0300 0520     		movs	r0, #5
+ 694 0302 FFF7FEFF 		bl	setScopeChannel
+ 695              	.LVL94:
+ 325:Src/main.c    **** 				6, (int)board_temp_adc_filtered); // 7: for board temperature
+ 696              		.loc 1 325 0
+ 697 0306 5046     		mov	r0, r10
+ 698 0308 FFF7FEFF 		bl	__aeabi_f2iz
+ 699              	.LVL95:
+ 700 030c 0146     		mov	r1, r0
+ 701 030e 0620     		movs	r0, #6
+ 702 0310 FFF7FEFF 		bl	setScopeChannel
+ 703              	.LVL96:
+ 328:Src/main.c    **** 							(int)board_temp_deg_c); // 8: for verifying board
+ 704              		.loc 1 328 0
+ 705 0314 3846     		mov	r0, r7
+ 706 0316 FFF7FEFF 		bl	__aeabi_f2iz
+ 707              	.LVL97:
+ 708 031a 0146     		mov	r1, r0
+ 709 031c 0720     		movs	r0, #7
+ 710 031e FFF7FEFF 		bl	setScopeChannel
+ 711              	.LVL98:
+ 331:Src/main.c    **** 		}
+ 712              		.loc 1 331 0
+ 713 0322 FFF7FEFF 		bl	consoleScope
+ 714              	.LVL99:
+ 715              	.L21:
+ 716              	.LBE9:
+ 335:Src/main.c    **** 			weakl == 0) {
+ 717              		.loc 1 335 0
+ 718 0326 0221     		movs	r1, #2
+ 719 0328 4A48     		ldr	r0, .L45+84
+ 720 032a FFF7FEFF 		bl	HAL_GPIO_ReadPin
+ 721              	.LVL100:
+ 722 032e 80B1     		cbz	r0, .L22
+ 335:Src/main.c    **** 			weakl == 0) {
+ 723              		.loc 1 335 0 is_stmt 0 discriminator 1
+ 724 0330 494B     		ldr	r3, .L45+88
+ 725 0332 1B68     		ldr	r3, [r3]
+ 726 0334 6BB9     		cbnz	r3, .L22
+ 336:Src/main.c    **** 			enable = 0;
+ 727              		.loc 1 336 0 is_stmt 1 discriminator 2
+ 728 0336 494B     		ldr	r3, .L45+92
+ 729 0338 1B68     		ldr	r3, [r3]
+ 335:Src/main.c    **** 			weakl == 0) {
+ 730              		.loc 1 335 0 discriminator 2
+ 731 033a 53B9     		cbnz	r3, .L22
+ 337:Src/main.c    **** 			while (HAL_GPIO_ReadPin(BUTTON_PORT, BUTTON_PIN)) {
+ 732              		.loc 1 337 0
+ 733 033c 0022     		movs	r2, #0
+ 734 033e 484B     		ldr	r3, .L45+96
+ 735 0340 1A70     		strb	r2, [r3]
+ 736              	.L23:
+ 338:Src/main.c    **** 			}
+ 737              		.loc 1 338 0 discriminator 1
+ 738 0342 0221     		movs	r1, #2
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 23
+
+
+ 739 0344 4348     		ldr	r0, .L45+84
+ 740 0346 FFF7FEFF 		bl	HAL_GPIO_ReadPin
+ 741              	.LVL101:
+ 742 034a 0028     		cmp	r0, #0
+ 743 034c F9D1     		bne	.L23
+ 340:Src/main.c    **** 		}
+ 744              		.loc 1 340 0
+ 745 034e FFF7FEFF 		bl	poweroff
+ 746              	.LVL102:
+ 747              	.L22:
+ 748              	.LBB10:
+ 346:Src/main.c    **** 				 ((float)BAT_LOW_DEAD * (float)BAT_NUMBER_OF_CELLS) &&
+ 749              		.loc 1 346 0
+ 750 0352 3F4B     		ldr	r3, .L45+80
+ 751 0354 1D68     		ldr	r5, [r3]	@ float
+ 344:Src/main.c    **** 			 abs(speed) < 20) ||
+ 752              		.loc 1 344 0
+ 753 0356 4349     		ldr	r1, .L45+100
+ 754 0358 2846     		mov	r0, r5
+ 755 035a FFF7FEFF 		bl	__aeabi_fcmplt
+ 756              	.LVL103:
+ 757 035e 38B1     		cbz	r0, .L24
+ 348:Src/main.c    **** 			poweroff();
+ 758              		.loc 1 348 0
+ 759 0360 414B     		ldr	r3, .L45+104
+ 760 0362 1B68     		ldr	r3, [r3]
+ 761 0364 1333     		adds	r3, r3, #19
+ 345:Src/main.c    **** 			(batteryVoltage <
+ 762              		.loc 1 345 0
+ 763 0366 262B     		cmp	r3, #38
+ 764 0368 02D8     		bhi	.L24
+ 349:Src/main.c    **** 		} else if (TEMP_WARNING_ENABLE &&
+ 765              		.loc 1 349 0
+ 766 036a FFF7FEFF 		bl	poweroff
+ 767              	.LVL104:
+ 768 036e 21E0     		b	.L26
+ 769              	.L24:
+ 362:Src/main.c    **** 					   ((float)BAT_LOW_LVL2 * (float)BAT_NUMBER_OF_CELLS) &&
+ 770              		.loc 1 362 0
+ 771 0370 3E49     		ldr	r1, .L45+108
+ 772 0372 2846     		mov	r0, r5
+ 773 0374 FFF7FEFF 		bl	__aeabi_fcmplt
+ 774              	.LVL105:
+ 775 0378 58B1     		cbz	r0, .L27
+ 365:Src/main.c    **** 				   BAT_LOW_LVL2_ENABLE) { // low bat 2: fast beep
+ 776              		.loc 1 365 0
+ 777 037a 3A49     		ldr	r1, .L45+100
+ 778 037c 2846     		mov	r0, r5
+ 779 037e FFF7FEFF 		bl	__aeabi_fcmpgt
+ 780              	.LVL106:
+ 781 0382 30B1     		cbz	r0, .L27
+ 367:Src/main.c    **** 			buzzerPattern = 6;
+ 782              		.loc 1 367 0
+ 783 0384 0522     		movs	r2, #5
+ 784 0386 3A4B     		ldr	r3, .L45+112
+ 785 0388 1A70     		strb	r2, [r3]
+ 368:Src/main.c    **** 		} else if (BEEPS_BACKWARD && speed < -50) { // backward beep
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 24
+
+
+ 786              		.loc 1 368 0
+ 787 038a 0622     		movs	r2, #6
+ 788 038c 394B     		ldr	r3, .L45+116
+ 789 038e 1A70     		strb	r2, [r3]
+ 790 0390 10E0     		b	.L26
+ 791              	.L27:
+ 369:Src/main.c    **** 			buzzerFreq = 5;
+ 792              		.loc 1 369 0
+ 793 0392 354B     		ldr	r3, .L45+104
+ 794 0394 1B68     		ldr	r3, [r3]
+ 795 0396 13F1320F 		cmn	r3, #50
+ 796 039a 06DA     		bge	.L30
+ 370:Src/main.c    **** 			buzzerPattern = 1;
+ 797              		.loc 1 370 0
+ 798 039c 0522     		movs	r2, #5
+ 799 039e 344B     		ldr	r3, .L45+112
+ 800 03a0 1A70     		strb	r2, [r3]
+ 371:Src/main.c    **** 		} else { // do not beep
+ 801              		.loc 1 371 0
+ 802 03a2 0122     		movs	r2, #1
+ 803 03a4 334B     		ldr	r3, .L45+116
+ 804 03a6 1A70     		strb	r2, [r3]
+ 805 03a8 04E0     		b	.L26
+ 806              	.L30:
+ 373:Src/main.c    **** 			buzzerPattern = 0;
+ 807              		.loc 1 373 0
+ 808 03aa 0023     		movs	r3, #0
+ 809 03ac 304A     		ldr	r2, .L45+112
+ 810 03ae 1370     		strb	r3, [r2]
+ 374:Src/main.c    **** 		}
+ 811              		.loc 1 374 0
+ 812 03b0 304A     		ldr	r2, .L45+116
+ 813 03b2 1370     		strb	r3, [r2]
+ 814              	.L26:
+ 815              	.LBE10:
+ 816              	.LBB11:
+ 378:Src/main.c    **** 			inactivity_timeout_counter = 0;
+ 817              		.loc 1 378 0
+ 818 03b4 84EAE473 		eor	r3, r4, r4, asr #31
+ 819 03b8 A3EBE473 		sub	r3, r3, r4, asr #31
+ 820 03bc 322B     		cmp	r3, #50
+ 821 03be 05DC     		bgt	.L31
+ 378:Src/main.c    **** 			inactivity_timeout_counter = 0;
+ 822              		.loc 1 378 0 is_stmt 0 discriminator 1
+ 823 03c0 86EAE673 		eor	r3, r6, r6, asr #31
+ 824 03c4 A3EBE673 		sub	r3, r3, r6, asr #31
+ 825 03c8 322B     		cmp	r3, #50
+ 826 03ca 03DD     		ble	.L32
+ 827              	.L31:
+ 379:Src/main.c    **** 		} else {
+ 828              		.loc 1 379 0 is_stmt 1
+ 829 03cc 0022     		movs	r2, #0
+ 830 03ce 2A4B     		ldr	r3, .L45+120
+ 831 03d0 1A60     		str	r2, [r3]
+ 832 03d2 03E0     		b	.L33
+ 833              	.L32:
+ 381:Src/main.c    **** 		}
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 25
+
+
+ 834              		.loc 1 381 0
+ 835 03d4 284A     		ldr	r2, .L45+120
+ 836 03d6 1368     		ldr	r3, [r2]
+ 837 03d8 0133     		adds	r3, r3, #1
+ 838 03da 1360     		str	r3, [r2]
+ 839              	.L33:
+ 840              	.LBE11:
+ 383:Src/main.c    **** 			(INACTIVITY_TIMEOUT * 60 * 1000) /
+ 841              		.loc 1 383 0
+ 842 03dc 264B     		ldr	r3, .L45+120
+ 843 03de 1A68     		ldr	r2, [r3]
+ 844 03e0 264B     		ldr	r3, .L45+124
+ 845 03e2 9A42     		cmp	r2, r3
+ 846 03e4 01D9     		bls	.L34
+ 386:Src/main.c    **** 		}
+ 847              		.loc 1 386 0
+ 848 03e6 FFF7FEFF 		bl	poweroff
+ 849              	.LVL107:
+ 850              	.L34:
+ 389:Src/main.c    **** 		timeout++;
+ 851              		.loc 1 389 0
+ 852 03ea 124A     		ldr	r2, .L45+52
+ 853 03ec 1368     		ldr	r3, [r2]
+ 854 03ee 0133     		adds	r3, r3, #1
+ 855 03f0 1360     		str	r3, [r2]
+ 390:Src/main.c    **** 	}
+ 856              		.loc 1 390 0
+ 857 03f2 0B4A     		ldr	r2, .L45+32
+ 858 03f4 1368     		ldr	r3, [r2]
+ 859 03f6 0133     		adds	r3, r3, #1
+ 860 03f8 1360     		str	r3, [r2]
+ 300:Src/main.c    **** 
+ 861              		.loc 1 300 0
+ 862 03fa 3746     		mov	r7, r6
+ 299:Src/main.c    **** 		lastSpeedR = speedR;
+ 863              		.loc 1 299 0
+ 864 03fc 2546     		mov	r5, r4
+ 391:Src/main.c    **** }
+ 865              		.loc 1 391 0
+ 866 03fe 7BE6     		b	.L35
+ 867              	.L46:
+ 868              		.align	3
+ 869              	.L45:
+ 870 0400 CDCCCCCC 		.word	-858993459
+ 871 0404 CCCCEC3F 		.word	1072483532
+ 872 0408 9A999999 		.word	-1717986918
+ 873 040c 9999B93F 		.word	1069128089
+ 874 0410 AE47E17A 		.word	2061584302
+ 875 0414 14AEEF3F 		.word	1072672276
+ 876 0418 7B14AE47 		.word	1202590843
+ 877 041c E17A843F 		.word	1065646817
+ 878 0420 00000000 		.word	timeout
+ 879 0424 00000000 		.word	cmd1
+ 880 0428 00000000 		.word	cmd2
+ 881 042c 00000000 		.word	pwmr
+ 882 0430 00000000 		.word	pwml
+ 883 0434 00000000 		.word	main_loop_counter
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 26
+
+
+ 884 0438 1F85EB51 		.word	1374389535
+ 885 043c 00000000 		.word	adc_buffer
+ 886 0440 00E0CE44 		.word	1154408448
+ 887 0444 083748BE 		.word	-1102563576
+ 888 0448 33330F42 		.word	1108292403
+ 889 044c 0000C842 		.word	1120403456
+ 890 0450 00000000 		.word	batteryVoltage
+ 891 0454 00080140 		.word	1073809408
+ 892 0458 00000000 		.word	weakr
+ 893 045c 00000000 		.word	weakl
+ 894 0460 00000000 		.word	enable
+ 895 0464 CCCC0642 		.word	1107741900
+ 896 0468 00000000 		.word	speed
+ 897 046c 00000C42 		.word	1108082688
+ 898 0470 00000000 		.word	buzzerFreq
+ 899 0474 00000000 		.word	buzzerPattern
+ 900 0478 00000000 		.word	inactivity_timeout_counter
+ 901 047c 80380100 		.word	80000
+ 902 0480 00000000 		.word	steer
+ 903              		.cfi_endproc
+ 904              	.LFE65:
+ 906              		.global	milli_vel_error_sum
+ 907              		.global	motor_test_direction
+ 908              		.comm	main_loop_counter,4,4
+ 909              		.comm	inactivity_timeout_counter,4,4
+ 910              		.comm	speed,4,4
+ 911              		.comm	steer,4,4
+ 912              		.comm	button2,1,1
+ 913              		.comm	button1,1,1
+ 914              		.comm	command,3,4
+ 915              		.comm	cmd3,4,4
+ 916              		.comm	cmd2,4,4
+ 917              		.comm	cmd1,4,4
+ 918              		.section	.data.motor_test_direction,"aw",%progbits
+ 919              		.align	2
+ 922              	motor_test_direction:
+ 923 0000 01000000 		.word	1
+ 924              		.section	.bss.milli_vel_error_sum,"aw",%nobits
+ 925              		.align	2
+ 928              	milli_vel_error_sum:
+ 929 0000 00000000 		.space	4
+ 930              		.text
+ 931              	.Letext0:
+ 932              		.file 2 "d:\\stm32\\gcc-arm\\arm-none-eabi\\include\\machine\\_default_types.h"
+ 933              		.file 3 "d:\\stm32\\gcc-arm\\arm-none-eabi\\include\\sys\\_stdint.h"
+ 934              		.file 4 "Drivers/CMSIS/Device/ST/STM32F1xx/Include/stm32f103xe.h"
+ 935              		.file 5 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_def.h"
+ 936              		.file 6 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_rcc.h"
+ 937              		.file 7 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_rcc_ex.h"
+ 938              		.file 8 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_dma.h"
+ 939              		.file 9 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_adc.h"
+ 940              		.file 10 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_uart.h"
+ 941              		.file 11 "Inc/defines.h"
+ 942              		.file 12 "<built-in>"
+ 943              		.file 13 "Drivers/CMSIS/Include/core_cm3.h"
+ 944              		.file 14 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h"
+ 945              		.file 15 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_gpio.h"
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 27
+
+
+ 946              		.file 16 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_cortex.h"
+ 947              		.file 17 "Inc/setup.h"
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 28
+
+
+DEFINED SYMBOLS
+                            *ABS*:00000000 main.c
+C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s:20     .text.poweroff:00000000 $t
+C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s:25     .text.poweroff:00000000 poweroff
+C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s:93     .text.poweroff:00000038 $d
+                            *COM*:00000004 speed
+C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s:103    .text.SystemClock_Config:00000000 $t
+C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s:108    .text.SystemClock_Config:00000000 SystemClock_Config
+C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s:197    .text.SystemClock_Config:00000070 $d
+C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s:216    .text.main:00000000 $t
+C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s:221    .text.main:00000000 main
+C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s:494    .text.main:00000180 $d
+                            *COM*:00000003 command
+                            *COM*:00000004 main_loop_counter
+C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s:510    .text.main:000001b4 $t
+C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s:870    .text.main:00000400 $d
+                            *COM*:00000004 cmd1
+                            *COM*:00000004 cmd2
+                            *COM*:00000004 inactivity_timeout_counter
+                            *COM*:00000004 steer
+C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s:928    .bss.milli_vel_error_sum:00000000 milli_vel_error_sum
+C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s:922    .data.motor_test_direction:00000000 motor_test_direction
+                            *COM*:00000001 button2
+                            *COM*:00000001 button1
+                            *COM*:00000004 cmd3
+C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s:919    .data.motor_test_direction:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s:925    .bss.milli_vel_error_sum:00000000 $d
+                     .debug_frame:00000010 $d
+
+UNDEFINED SYMBOLS
+HAL_Delay
+HAL_GPIO_WritePin
+buzzerPattern
+enable
+buzzerFreq
+HAL_RCC_OscConfig
+HAL_RCC_ClockConfig
+HAL_RCCEx_PeriphCLKConfig
+HAL_RCC_GetHCLKFreq
+HAL_SYSTICK_Config
+HAL_SYSTICK_CLKSourceConfig
+HAL_NVIC_SetPriority
+__aeabi_ui2f
+__aeabi_i2f
+__aeabi_fmul
+__aeabi_f2iz
+__aeabi_i2d
+__aeabi_dmul
+__aeabi_dadd
+__aeabi_d2iz
+__aeabi_f2d
+__aeabi_d2f
+__aeabi_fsub
+__aeabi_fadd
+__aeabi_fcmplt
+__aeabi_fcmpgt
+HAL_Init
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccuw19rO.s 			page 29
+
+
+HAL_NVIC_SetPriorityGrouping
+MX_GPIO_Init
+MX_TIM_Init
+MX_ADC1_Init
+MX_ADC2_Init
+UART_Init
+HAL_ADC_Start
+UART_Control_Init
+HAL_UART_Receive_DMA
+HAL_UART_DMAStop
+hadc1
+hadc2
+huart2
+adc_buffer
+setScopeChannel
+consoleScope
+HAL_GPIO_ReadPin
+timeout
+pwmr
+pwml
+batteryVoltage
+weakr
+weakl

@@ -1,0 +1,368 @@
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\cch1Fjor.s 			page 1
+
+
+   1              		.syntax unified
+   2              		.cpu cortex-m3
+   3              		.fpu softvfp
+   4              		.eabi_attribute 20, 1
+   5              		.eabi_attribute 21, 1
+   6              		.eabi_attribute 23, 3
+   7              		.eabi_attribute 24, 1
+   8              		.eabi_attribute 25, 1
+   9              		.eabi_attribute 26, 1
+  10              		.eabi_attribute 30, 1
+  11              		.eabi_attribute 34, 1
+  12              		.eabi_attribute 18, 4
+  13              		.thumb
+  14              		.syntax unified
+  15              		.file	"control.c"
+  16              		.text
+  17              	.Ltext0:
+  18              		.cfi_sections	.debug_frame
+  19              		.section	.text.Nunchuck_Init,"ax",%progbits
+  20              		.align	2
+  21              		.global	Nunchuck_Init
+  22              		.thumb
+  23              		.thumb_func
+  25              	Nunchuck_Init:
+  26              	.LFB64:
+  27              		.file 1 "Src/control.c"
+   1:Src/control.c **** 
+   2:Src/control.c **** #include "stm32f1xx_hal.h"
+   3:Src/control.c **** #include "defines.h"
+   4:Src/control.c **** #include "setup.h"
+   5:Src/control.c **** #include "config.h"
+   6:Src/control.c **** #include <stdbool.h>
+   7:Src/control.c **** #include <string.h>
+   8:Src/control.c **** 
+   9:Src/control.c **** TIM_HandleTypeDef TimHandle;
+  10:Src/control.c **** uint8_t ppm_count = 0;
+  11:Src/control.c **** uint32_t timeout = 100;
+  12:Src/control.c **** uint8_t nunchuck_data[6] = {0};
+  13:Src/control.c **** 
+  14:Src/control.c **** uint8_t i2cBuffer[2];
+  15:Src/control.c **** 
+  16:Src/control.c **** extern I2C_HandleTypeDef hi2c2;
+  17:Src/control.c **** DMA_HandleTypeDef hdma_i2c2_rx;
+  18:Src/control.c **** DMA_HandleTypeDef hdma_i2c2_tx;
+  19:Src/control.c **** 
+  20:Src/control.c **** #ifdef CONTROL_PPM
+  21:Src/control.c **** uint16_t ppm_captured_value[PPM_NUM_CHANNELS + 1] = {500, 500};
+  22:Src/control.c **** uint16_t ppm_captured_value_buffer[PPM_NUM_CHANNELS+1] = {500, 500};
+  23:Src/control.c **** uint32_t ppm_timeout = 0;
+  24:Src/control.c **** 
+  25:Src/control.c **** bool ppm_valid = true;
+  26:Src/control.c **** 
+  27:Src/control.c **** #define IN_RANGE(x, low, up) (((x) >= (low)) && ((x) <= (up)))
+  28:Src/control.c **** 
+  29:Src/control.c **** void PPM_ISR_Callback() {
+  30:Src/control.c ****   // Dummy loop with 16 bit count wrap around
+  31:Src/control.c ****   uint16_t rc_delay = TIM2->CNT;
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\cch1Fjor.s 			page 2
+
+
+  32:Src/control.c ****   TIM2->CNT = 0;
+  33:Src/control.c **** 
+  34:Src/control.c ****   if (rc_delay > 3000) {
+  35:Src/control.c ****     if (ppm_valid && ppm_count == PPM_NUM_CHANNELS) {
+  36:Src/control.c ****       ppm_timeout = 0;
+  37:Src/control.c ****       memcpy(ppm_captured_value, ppm_captured_value_buffer, sizeof(ppm_captured_value));
+  38:Src/control.c ****     }
+  39:Src/control.c ****     ppm_valid = true;
+  40:Src/control.c ****     ppm_count = 0;
+  41:Src/control.c ****   }
+  42:Src/control.c ****   else if (ppm_count < PPM_NUM_CHANNELS && IN_RANGE(rc_delay, 900, 2100)){
+  43:Src/control.c ****     timeout = 0;
+  44:Src/control.c ****     ppm_captured_value_buffer[ppm_count++] = CLAMP(rc_delay, 1000, 2000) - 1000;
+  45:Src/control.c ****   } else {
+  46:Src/control.c ****     ppm_valid = false;
+  47:Src/control.c ****   }
+  48:Src/control.c **** }
+  49:Src/control.c **** 
+  50:Src/control.c **** // SysTick executes once each ms
+  51:Src/control.c **** void PPM_SysTick_Callback() {
+  52:Src/control.c ****   ppm_timeout++;
+  53:Src/control.c ****   // Stop after 500 ms without PPM signal
+  54:Src/control.c ****   if(ppm_timeout > 500) {
+  55:Src/control.c ****     int i;
+  56:Src/control.c ****     for(i = 0; i < PPM_NUM_CHANNELS; i++) {
+  57:Src/control.c ****       ppm_captured_value[i] = 500;
+  58:Src/control.c ****     }
+  59:Src/control.c ****     ppm_timeout = 0;
+  60:Src/control.c ****   }
+  61:Src/control.c **** }
+  62:Src/control.c **** 
+  63:Src/control.c **** void PPM_Init() {
+  64:Src/control.c ****   GPIO_InitTypeDef GPIO_InitStruct;
+  65:Src/control.c ****   /*Configure GPIO pin : PA3 */
+  66:Src/control.c ****   GPIO_InitStruct.Pin = GPIO_PIN_3;
+  67:Src/control.c ****   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  68:Src/control.c ****   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  69:Src/control.c ****   GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  70:Src/control.c ****   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  71:Src/control.c **** 
+  72:Src/control.c ****   __HAL_RCC_TIM2_CLK_ENABLE();
+  73:Src/control.c ****   TimHandle.Instance = TIM2;
+  74:Src/control.c ****   TimHandle.Init.Period = UINT16_MAX;
+  75:Src/control.c ****   TimHandle.Init.Prescaler = (SystemCoreClock/DELAY_TIM_FREQUENCY_US)-1;;
+  76:Src/control.c ****   TimHandle.Init.ClockDivision = 0;
+  77:Src/control.c ****   TimHandle.Init.CounterMode = TIM_COUNTERMODE_UP;
+  78:Src/control.c ****   HAL_TIM_Base_Init(&TimHandle);
+  79:Src/control.c **** 
+  80:Src/control.c ****   /* EXTI interrupt init*/
+  81:Src/control.c ****   HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
+  82:Src/control.c ****   HAL_NVIC_EnableIRQ(EXTI3_IRQn);
+  83:Src/control.c ****   HAL_TIM_Base_Start(&TimHandle);
+  84:Src/control.c **** }
+  85:Src/control.c **** #endif
+  86:Src/control.c **** 
+  87:Src/control.c **** void Nunchuck_Init() {
+  28              		.loc 1 87 0
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\cch1Fjor.s 			page 3
+
+
+  29              		.cfi_startproc
+  30              		@ args = 0, pretend = 0, frame = 0
+  31              		@ frame_needed = 0, uses_anonymous_args = 0
+  32 0000 70B5     		push	{r4, r5, r6, lr}
+  33              	.LCFI0:
+  34              		.cfi_def_cfa_offset 16
+  35              		.cfi_offset 4, -16
+  36              		.cfi_offset 5, -12
+  37              		.cfi_offset 6, -8
+  38              		.cfi_offset 14, -4
+  39 0002 82B0     		sub	sp, sp, #8
+  40              	.LCFI1:
+  41              		.cfi_def_cfa_offset 24
+  88:Src/control.c ****     //-- START -- init WiiNunchuck
+  89:Src/control.c ****   i2cBuffer[0] = 0xF0;
+  42              		.loc 1 89 0
+  43 0004 104C     		ldr	r4, .L3
+  44 0006 F023     		movs	r3, #240
+  45 0008 2370     		strb	r3, [r4]
+  90:Src/control.c ****   i2cBuffer[1] = 0x55;
+  46              		.loc 1 90 0
+  47 000a 5523     		movs	r3, #85
+  48 000c 6370     		strb	r3, [r4, #1]
+  91:Src/control.c **** 
+  92:Src/control.c ****   HAL_I2C_Master_Transmit(&hi2c2,0xA4,(uint8_t*)i2cBuffer, 2, 100);
+  49              		.loc 1 92 0
+  50 000e 0F4D     		ldr	r5, .L3+4
+  51 0010 6426     		movs	r6, #100
+  52 0012 0096     		str	r6, [sp]
+  53 0014 0223     		movs	r3, #2
+  54 0016 2246     		mov	r2, r4
+  55 0018 A421     		movs	r1, #164
+  56 001a 2846     		mov	r0, r5
+  57 001c FFF7FEFF 		bl	HAL_I2C_Master_Transmit
+  58              	.LVL0:
+  93:Src/control.c ****   HAL_Delay(10);
+  59              		.loc 1 93 0
+  60 0020 0A20     		movs	r0, #10
+  61 0022 FFF7FEFF 		bl	HAL_Delay
+  62              	.LVL1:
+  94:Src/control.c **** 
+  95:Src/control.c ****   i2cBuffer[0] = 0xFB;
+  63              		.loc 1 95 0
+  64 0026 FB23     		movs	r3, #251
+  65 0028 2370     		strb	r3, [r4]
+  96:Src/control.c ****   i2cBuffer[1] = 0x00;
+  66              		.loc 1 96 0
+  67 002a 0023     		movs	r3, #0
+  68 002c 6370     		strb	r3, [r4, #1]
+  97:Src/control.c **** 
+  98:Src/control.c ****   HAL_I2C_Master_Transmit(&hi2c2,0xA4,(uint8_t*)i2cBuffer, 2, 100);
+  69              		.loc 1 98 0
+  70 002e 0096     		str	r6, [sp]
+  71 0030 0223     		movs	r3, #2
+  72 0032 2246     		mov	r2, r4
+  73 0034 A421     		movs	r1, #164
+  74 0036 2846     		mov	r0, r5
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\cch1Fjor.s 			page 4
+
+
+  75 0038 FFF7FEFF 		bl	HAL_I2C_Master_Transmit
+  76              	.LVL2:
+  99:Src/control.c ****   HAL_Delay(10);
+  77              		.loc 1 99 0
+  78 003c 0A20     		movs	r0, #10
+  79 003e FFF7FEFF 		bl	HAL_Delay
+  80              	.LVL3:
+ 100:Src/control.c **** }
+  81              		.loc 1 100 0
+  82 0042 02B0     		add	sp, sp, #8
+  83              	.LCFI2:
+  84              		.cfi_def_cfa_offset 16
+  85              		@ sp needed
+  86 0044 70BD     		pop	{r4, r5, r6, pc}
+  87              	.L4:
+  88 0046 00BF     		.align	2
+  89              	.L3:
+  90 0048 00000000 		.word	i2cBuffer
+  91 004c 00000000 		.word	hi2c2
+  92              		.cfi_endproc
+  93              	.LFE64:
+  95              		.section	.text.Nunchuck_Read,"ax",%progbits
+  96              		.align	2
+  97              		.global	Nunchuck_Read
+  98              		.thumb
+  99              		.thumb_func
+ 101              	Nunchuck_Read:
+ 102              	.LFB65:
+ 101:Src/control.c **** 
+ 102:Src/control.c **** void Nunchuck_Read() {
+ 103              		.loc 1 102 0
+ 104              		.cfi_startproc
+ 105              		@ args = 0, pretend = 0, frame = 0
+ 106              		@ frame_needed = 0, uses_anonymous_args = 0
+ 107 0000 30B5     		push	{r4, r5, lr}
+ 108              	.LCFI3:
+ 109              		.cfi_def_cfa_offset 12
+ 110              		.cfi_offset 4, -12
+ 111              		.cfi_offset 5, -8
+ 112              		.cfi_offset 14, -4
+ 113 0002 83B0     		sub	sp, sp, #12
+ 114              	.LCFI4:
+ 115              		.cfi_def_cfa_offset 24
+ 103:Src/control.c ****   i2cBuffer[0] = 0x00;
+ 116              		.loc 1 103 0
+ 117 0004 114A     		ldr	r2, .L9
+ 118 0006 0023     		movs	r3, #0
+ 119 0008 1370     		strb	r3, [r2]
+ 104:Src/control.c ****   HAL_I2C_Master_Transmit(&hi2c2,0xA4,(uint8_t*)i2cBuffer, 1, 100);
+ 120              		.loc 1 104 0
+ 121 000a 114C     		ldr	r4, .L9+4
+ 122 000c 6425     		movs	r5, #100
+ 123 000e 0095     		str	r5, [sp]
+ 124 0010 0123     		movs	r3, #1
+ 125 0012 A421     		movs	r1, #164
+ 126 0014 2046     		mov	r0, r4
+ 127 0016 FFF7FEFF 		bl	HAL_I2C_Master_Transmit
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\cch1Fjor.s 			page 5
+
+
+ 128              	.LVL4:
+ 105:Src/control.c ****   HAL_Delay(5);
+ 129              		.loc 1 105 0
+ 130 001a 0520     		movs	r0, #5
+ 131 001c FFF7FEFF 		bl	HAL_Delay
+ 132              	.LVL5:
+ 106:Src/control.c ****   if (HAL_I2C_Master_Receive(&hi2c2,0xA4,(uint8_t*)nunchuck_data, 6, 100) == HAL_OK) {
+ 133              		.loc 1 106 0
+ 134 0020 0095     		str	r5, [sp]
+ 135 0022 0623     		movs	r3, #6
+ 136 0024 0B4A     		ldr	r2, .L9+8
+ 137 0026 A421     		movs	r1, #164
+ 138 0028 2046     		mov	r0, r4
+ 139 002a FFF7FEFF 		bl	HAL_I2C_Master_Receive
+ 140              	.LVL6:
+ 141 002e 10B9     		cbnz	r0, .L6
+ 107:Src/control.c ****     timeout = 0;
+ 142              		.loc 1 107 0
+ 143 0030 0022     		movs	r2, #0
+ 144 0032 094B     		ldr	r3, .L9+12
+ 145 0034 1A60     		str	r2, [r3]
+ 146              	.L6:
+ 108:Src/control.c ****   }
+ 109:Src/control.c **** 
+ 110:Src/control.c ****   if (timeout > 3) {
+ 147              		.loc 1 110 0
+ 148 0036 084B     		ldr	r3, .L9+12
+ 149 0038 1B68     		ldr	r3, [r3]
+ 150 003a 032B     		cmp	r3, #3
+ 151 003c 04D9     		bls	.L5
+ 111:Src/control.c ****     HAL_Delay(50);
+ 152              		.loc 1 111 0
+ 153 003e 3220     		movs	r0, #50
+ 154 0040 FFF7FEFF 		bl	HAL_Delay
+ 155              	.LVL7:
+ 112:Src/control.c ****     Nunchuck_Init();
+ 156              		.loc 1 112 0
+ 157 0044 FFF7FEFF 		bl	Nunchuck_Init
+ 158              	.LVL8:
+ 159              	.L5:
+ 113:Src/control.c ****   }
+ 114:Src/control.c **** 
+ 115:Src/control.c ****   //setScopeChannel(0, (int)nunchuck_data[0]);
+ 116:Src/control.c ****   //setScopeChannel(1, (int)nunchuck_data[1]);
+ 117:Src/control.c ****   //setScopeChannel(2, (int)nunchuck_data[5] & 1);
+ 118:Src/control.c ****   //setScopeChannel(3, ((int)nunchuck_data[5] >> 1) & 1);
+ 119:Src/control.c **** }
+ 160              		.loc 1 119 0
+ 161 0048 03B0     		add	sp, sp, #12
+ 162              	.LCFI5:
+ 163              		.cfi_def_cfa_offset 12
+ 164              		@ sp needed
+ 165 004a 30BD     		pop	{r4, r5, pc}
+ 166              	.L10:
+ 167              		.align	2
+ 168              	.L9:
+ 169 004c 00000000 		.word	i2cBuffer
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\cch1Fjor.s 			page 6
+
+
+ 170 0050 00000000 		.word	hi2c2
+ 171 0054 00000000 		.word	.LANCHOR0
+ 172 0058 00000000 		.word	.LANCHOR1
+ 173              		.cfi_endproc
+ 174              	.LFE65:
+ 176              		.comm	hdma_i2c2_tx,68,4
+ 177              		.comm	hdma_i2c2_rx,68,4
+ 178              		.comm	i2cBuffer,2,4
+ 179              		.global	nunchuck_data
+ 180              		.global	timeout
+ 181              		.global	ppm_count
+ 182              		.comm	TimHandle,64,4
+ 183              		.section	.data.timeout,"aw",%progbits
+ 184              		.align	2
+ 185              		.set	.LANCHOR1,. + 0
+ 188              	timeout:
+ 189 0000 64000000 		.word	100
+ 190              		.section	.bss.nunchuck_data,"aw",%nobits
+ 191              		.align	2
+ 192              		.set	.LANCHOR0,. + 0
+ 195              	nunchuck_data:
+ 196 0000 00000000 		.space	6
+ 196      0000
+ 197              		.section	.bss.ppm_count,"aw",%nobits
+ 200              	ppm_count:
+ 201 0000 00       		.space	1
+ 202              		.text
+ 203              	.Letext0:
+ 204              		.file 2 "d:\\stm32\\gcc-arm\\arm-none-eabi\\include\\machine\\_default_types.h"
+ 205              		.file 3 "d:\\stm32\\gcc-arm\\arm-none-eabi\\include\\sys\\_stdint.h"
+ 206              		.file 4 "Drivers/CMSIS/Device/ST/STM32F1xx/Include/stm32f103xe.h"
+ 207              		.file 5 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_def.h"
+ 208              		.file 6 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_dma.h"
+ 209              		.file 7 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_i2c.h"
+ 210              		.file 8 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h"
+ 211              		.file 9 "Drivers/CMSIS/Include/core_cm3.h"
+ 212              		.file 10 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h"
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\cch1Fjor.s 			page 7
+
+
+DEFINED SYMBOLS
+                            *ABS*:00000000 control.c
+C:\Users\Areg\AppData\Local\Temp\cch1Fjor.s:20     .text.Nunchuck_Init:00000000 $t
+C:\Users\Areg\AppData\Local\Temp\cch1Fjor.s:25     .text.Nunchuck_Init:00000000 Nunchuck_Init
+C:\Users\Areg\AppData\Local\Temp\cch1Fjor.s:90     .text.Nunchuck_Init:00000048 $d
+                            *COM*:00000002 i2cBuffer
+C:\Users\Areg\AppData\Local\Temp\cch1Fjor.s:96     .text.Nunchuck_Read:00000000 $t
+C:\Users\Areg\AppData\Local\Temp\cch1Fjor.s:101    .text.Nunchuck_Read:00000000 Nunchuck_Read
+C:\Users\Areg\AppData\Local\Temp\cch1Fjor.s:169    .text.Nunchuck_Read:0000004c $d
+                            *COM*:00000044 hdma_i2c2_tx
+                            *COM*:00000044 hdma_i2c2_rx
+C:\Users\Areg\AppData\Local\Temp\cch1Fjor.s:195    .bss.nunchuck_data:00000000 nunchuck_data
+C:\Users\Areg\AppData\Local\Temp\cch1Fjor.s:188    .data.timeout:00000000 timeout
+C:\Users\Areg\AppData\Local\Temp\cch1Fjor.s:200    .bss.ppm_count:00000000 ppm_count
+                            *COM*:00000040 TimHandle
+C:\Users\Areg\AppData\Local\Temp\cch1Fjor.s:184    .data.timeout:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\cch1Fjor.s:191    .bss.nunchuck_data:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\cch1Fjor.s:201    .bss.ppm_count:00000000 $d
+                     .debug_frame:00000010 $d
+
+UNDEFINED SYMBOLS
+HAL_I2C_Master_Transmit
+HAL_Delay
+hi2c2
+HAL_I2C_Master_Receive

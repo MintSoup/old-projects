@@ -1,0 +1,9 @@
+# depslib dependency file v1.0
+1473075752 source:c:\users\dell\desktop\allfiles\areg\c++\codeblocks\bfcompiler\main.cpp
+	<fstream>
+	<iostream>
+	<conio.h>
+	<stack>
+	<stdlib.h>
+	<vector>
+

@@ -1,0 +1,2127 @@
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 1
+
+
+   1              		.syntax unified
+   2              		.cpu cortex-m3
+   3              		.fpu softvfp
+   4              		.eabi_attribute 20, 1
+   5              		.eabi_attribute 21, 1
+   6              		.eabi_attribute 23, 3
+   7              		.eabi_attribute 24, 1
+   8              		.eabi_attribute 25, 1
+   9              		.eabi_attribute 26, 1
+  10              		.eabi_attribute 30, 1
+  11              		.eabi_attribute 34, 1
+  12              		.eabi_attribute 18, 4
+  13              		.thumb
+  14              		.syntax unified
+  15              		.file	"bldc.c"
+  16              		.text
+  17              	.Ltext0:
+  18              		.cfi_sections	.debug_frame
+  19              		.global	__aeabi_f2d
+  20              		.global	__aeabi_dmul
+  21              		.global	__aeabi_ui2f
+  22              		.global	__aeabi_fmul
+  23              		.global	__aeabi_dadd
+  24              		.global	__aeabi_d2f
+  25              		.global	__aeabi_i2d
+  26              		.global	__aeabi_dcmplt
+  27              		.global	__aeabi_dcmpgt
+  28              		.section	.text.DMA1_Channel1_IRQHandler,"ax",%progbits
+  29              		.align	2
+  30              		.global	DMA1_Channel1_IRQHandler
+  31              		.thumb
+  32              		.thumb_func
+  34              	DMA1_Channel1_IRQHandler:
+  35              	.LFB66:
+  36              		.file 1 "Src/bldc.c"
+   1:Src/bldc.c    **** 
+   2:Src/bldc.c    **** #include "stm32f1xx_hal.h"
+   3:Src/bldc.c    **** #include "defines.h"
+   4:Src/bldc.c    **** #include "setup.h"
+   5:Src/bldc.c    **** #include "config.h"
+   6:Src/bldc.c    **** 
+   7:Src/bldc.c    **** 
+   8:Src/bldc.c    **** volatile int posl = 0;
+   9:Src/bldc.c    **** volatile int posr = 0;
+  10:Src/bldc.c    **** volatile int pwml = 0;
+  11:Src/bldc.c    **** volatile int pwmr = 0;
+  12:Src/bldc.c    **** volatile int weakl = 0;
+  13:Src/bldc.c    **** volatile int weakr = 0;
+  14:Src/bldc.c    **** 
+  15:Src/bldc.c    **** extern volatile int speed;
+  16:Src/bldc.c    **** 
+  17:Src/bldc.c    **** extern volatile adc_buf_t adc_buffer;
+  18:Src/bldc.c    **** 
+  19:Src/bldc.c    **** extern volatile uint32_t timeout;
+  20:Src/bldc.c    **** 
+  21:Src/bldc.c    **** uint32_t buzzerFreq = 0;
+  22:Src/bldc.c    **** uint32_t buzzerPattern = 0;
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 2
+
+
+  23:Src/bldc.c    **** 
+  24:Src/bldc.c    **** uint8_t enable = 0;
+  25:Src/bldc.c    **** 
+  26:Src/bldc.c    **** const int pwm_res = 64000000 / 2 / PWM_FREQ; // = 2000
+  27:Src/bldc.c    **** 
+  28:Src/bldc.c    **** const uint8_t hall_to_pos[8] = {
+  29:Src/bldc.c    ****     0,
+  30:Src/bldc.c    ****     0,
+  31:Src/bldc.c    ****     2,
+  32:Src/bldc.c    ****     1,
+  33:Src/bldc.c    ****     4,
+  34:Src/bldc.c    ****     5,
+  35:Src/bldc.c    ****     3,
+  36:Src/bldc.c    ****     0,
+  37:Src/bldc.c    **** };
+  38:Src/bldc.c    **** 
+  39:Src/bldc.c    **** inline void blockPWM(int pwm, int pos, int *u, int *v, int *w) {
+  40:Src/bldc.c    ****   switch(pos) {
+  41:Src/bldc.c    ****     case 0:
+  42:Src/bldc.c    ****       *u = 0;
+  43:Src/bldc.c    ****       *v = pwm;
+  44:Src/bldc.c    ****       *w = -pwm;
+  45:Src/bldc.c    ****       break;
+  46:Src/bldc.c    ****     case 1:
+  47:Src/bldc.c    ****       *u = -pwm;
+  48:Src/bldc.c    ****       *v = pwm;
+  49:Src/bldc.c    ****       *w = 0;
+  50:Src/bldc.c    ****       break;
+  51:Src/bldc.c    ****     case 2:
+  52:Src/bldc.c    ****       *u = -pwm;
+  53:Src/bldc.c    ****       *v = 0;
+  54:Src/bldc.c    ****       *w = pwm;
+  55:Src/bldc.c    ****       break;
+  56:Src/bldc.c    ****     case 3:
+  57:Src/bldc.c    ****       *u = 0;
+  58:Src/bldc.c    ****       *v = -pwm;
+  59:Src/bldc.c    ****       *w = pwm;
+  60:Src/bldc.c    ****       break;
+  61:Src/bldc.c    ****     case 4:
+  62:Src/bldc.c    ****       *u = pwm;
+  63:Src/bldc.c    ****       *v = -pwm;
+  64:Src/bldc.c    ****       *w = 0;
+  65:Src/bldc.c    ****       break;
+  66:Src/bldc.c    ****     case 5:
+  67:Src/bldc.c    ****       *u = pwm;
+  68:Src/bldc.c    ****       *v = 0;
+  69:Src/bldc.c    ****       *w = -pwm;
+  70:Src/bldc.c    ****       break;
+  71:Src/bldc.c    ****     default:
+  72:Src/bldc.c    ****       *u = 0;
+  73:Src/bldc.c    ****       *v = 0;
+  74:Src/bldc.c    ****       *w = 0;
+  75:Src/bldc.c    ****   }
+  76:Src/bldc.c    **** }
+  77:Src/bldc.c    **** 
+  78:Src/bldc.c    **** inline void blockPhaseCurrent(int pos, int u, int v, int *q) {
+  79:Src/bldc.c    ****   switch(pos) {
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 3
+
+
+  80:Src/bldc.c    ****     case 0:
+  81:Src/bldc.c    ****       *q = u - v;
+  82:Src/bldc.c    ****       // *u = 0;
+  83:Src/bldc.c    ****       // *v = pwm;
+  84:Src/bldc.c    ****       // *w = -pwm;
+  85:Src/bldc.c    ****       break;
+  86:Src/bldc.c    ****     case 1:
+  87:Src/bldc.c    ****       *q = u;
+  88:Src/bldc.c    ****       // *u = -pwm;
+  89:Src/bldc.c    ****       // *v = pwm;
+  90:Src/bldc.c    ****       // *w = 0;
+  91:Src/bldc.c    ****       break;
+  92:Src/bldc.c    ****     case 2:
+  93:Src/bldc.c    ****       *q = u;
+  94:Src/bldc.c    ****       // *u = -pwm;
+  95:Src/bldc.c    ****       // *v = 0;
+  96:Src/bldc.c    ****       // *w = pwm;
+  97:Src/bldc.c    ****       break;
+  98:Src/bldc.c    ****     case 3:
+  99:Src/bldc.c    ****       *q = v;
+ 100:Src/bldc.c    ****       // *u = 0;
+ 101:Src/bldc.c    ****       // *v = -pwm;
+ 102:Src/bldc.c    ****       // *w = pwm;
+ 103:Src/bldc.c    ****       break;
+ 104:Src/bldc.c    ****     case 4:
+ 105:Src/bldc.c    ****       *q = v;
+ 106:Src/bldc.c    ****       // *u = pwm;
+ 107:Src/bldc.c    ****       // *v = -pwm;
+ 108:Src/bldc.c    ****       // *w = 0;
+ 109:Src/bldc.c    ****       break;
+ 110:Src/bldc.c    ****     case 5:
+ 111:Src/bldc.c    ****       *q = -(u - v);
+ 112:Src/bldc.c    ****       // *u = pwm;
+ 113:Src/bldc.c    ****       // *v = 0;
+ 114:Src/bldc.c    ****       // *w = -pwm;
+ 115:Src/bldc.c    ****       break;
+ 116:Src/bldc.c    ****     default:
+ 117:Src/bldc.c    ****       *q = 0;
+ 118:Src/bldc.c    ****       // *u = 0;
+ 119:Src/bldc.c    ****       // *v = 0;
+ 120:Src/bldc.c    ****       // *w = 0;
+ 121:Src/bldc.c    ****   }
+ 122:Src/bldc.c    **** }
+ 123:Src/bldc.c    **** 
+ 124:Src/bldc.c    **** uint32_t buzzerTimer        = 0;
+ 125:Src/bldc.c    **** 
+ 126:Src/bldc.c    **** int offsetcount = 0;
+ 127:Src/bldc.c    **** int offsetrl1   = 2000;
+ 128:Src/bldc.c    **** int offsetrl2   = 2000;
+ 129:Src/bldc.c    **** int offsetrr1   = 2000;
+ 130:Src/bldc.c    **** int offsetrr2   = 2000;
+ 131:Src/bldc.c    **** int offsetdcl   = 2000;
+ 132:Src/bldc.c    **** int offsetdcr   = 2000;
+ 133:Src/bldc.c    **** 
+ 134:Src/bldc.c    **** float batteryVoltage = BAT_NUMBER_OF_CELLS * 4.0;
+ 135:Src/bldc.c    **** 
+ 136:Src/bldc.c    **** int curl = 0;
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 4
+
+
+ 137:Src/bldc.c    **** // int errorl = 0;
+ 138:Src/bldc.c    **** // int kp = 5;
+ 139:Src/bldc.c    **** // volatile int cmdl = 0;
+ 140:Src/bldc.c    **** 
+ 141:Src/bldc.c    **** int last_pos = 0;
+ 142:Src/bldc.c    **** int timer = 0;
+ 143:Src/bldc.c    **** const int max_time = PWM_FREQ / 10;
+ 144:Src/bldc.c    **** volatile int vel = 0;
+ 145:Src/bldc.c    **** 
+ 146:Src/bldc.c    **** //scan 8 channels with 2ADCs @ 20 clk cycles per sample
+ 147:Src/bldc.c    **** //meaning ~80 ADC clock cycles @ 8MHz until new DMA interrupt =~ 100KHz
+ 148:Src/bldc.c    **** //=640 cpu cycles
+ 149:Src/bldc.c    **** void DMA1_Channel1_IRQHandler() {
+  37              		.loc 1 149 0
+  38              		.cfi_startproc
+  39              		@ args = 0, pretend = 0, frame = 0
+  40              		@ frame_needed = 0, uses_anonymous_args = 0
+ 150:Src/bldc.c    ****   DMA1->IFCR = DMA_IFCR_CTCIF1;
+  41              		.loc 1 150 0
+  42 0000 0222     		movs	r2, #2
+  43 0002 814B     		ldr	r3, .L99+24
+  44 0004 5A60     		str	r2, [r3, #4]
+ 151:Src/bldc.c    ****   // HAL_GPIO_WritePin(LED_PORT, LED_PIN, 1);
+ 152:Src/bldc.c    **** 
+ 153:Src/bldc.c    ****   if(offsetcount < 1000) {  // calibrate ADC offsets
+  45              		.loc 1 153 0
+  46 0006 814B     		ldr	r3, .L99+28
+  47 0008 1B68     		ldr	r3, [r3]
+  48 000a B3F57A7F 		cmp	r3, #1000
+  49 000e 3ADA     		bge	.L2
+ 154:Src/bldc.c    ****     offsetcount++;
+  50              		.loc 1 154 0
+  51 0010 0133     		adds	r3, r3, #1
+  52 0012 7E4A     		ldr	r2, .L99+28
+  53 0014 1360     		str	r3, [r2]
+ 155:Src/bldc.c    ****     offsetrl1 = (adc_buffer.rl1 + offsetrl1) / 2;
+  54              		.loc 1 155 0
+  55 0016 7E4A     		ldr	r2, .L99+32
+  56 0018 9388     		ldrh	r3, [r2, #4]
+  57 001a 99B2     		uxth	r1, r3
+  58 001c 7D48     		ldr	r0, .L99+36
+  59 001e 0368     		ldr	r3, [r0]
+  60 0020 0B44     		add	r3, r3, r1
+  61 0022 03EBD373 		add	r3, r3, r3, lsr #31
+  62 0026 5B10     		asrs	r3, r3, #1
+  63 0028 0360     		str	r3, [r0]
+ 156:Src/bldc.c    ****     offsetrl2 = (adc_buffer.rl2 + offsetrl2) / 2;
+  64              		.loc 1 156 0
+  65 002a D388     		ldrh	r3, [r2, #6]
+  66 002c 99B2     		uxth	r1, r3
+  67 002e 7A48     		ldr	r0, .L99+40
+  68 0030 0368     		ldr	r3, [r0]
+  69 0032 0B44     		add	r3, r3, r1
+  70 0034 03EBD373 		add	r3, r3, r3, lsr #31
+  71 0038 5B10     		asrs	r3, r3, #1
+  72 003a 0360     		str	r3, [r0]
+ 157:Src/bldc.c    ****     offsetrr1 = (adc_buffer.rr1 + offsetrr1) / 2;
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 5
+
+
+  73              		.loc 1 157 0
+  74 003c 1388     		ldrh	r3, [r2]
+  75 003e 99B2     		uxth	r1, r3
+  76 0040 7648     		ldr	r0, .L99+44
+  77 0042 0368     		ldr	r3, [r0]
+  78 0044 0B44     		add	r3, r3, r1
+  79 0046 03EBD373 		add	r3, r3, r3, lsr #31
+  80 004a 5B10     		asrs	r3, r3, #1
+  81 004c 0360     		str	r3, [r0]
+ 158:Src/bldc.c    ****     offsetrr2 = (adc_buffer.rr2 + offsetrr2) / 2;
+  82              		.loc 1 158 0
+  83 004e 5388     		ldrh	r3, [r2, #2]
+  84 0050 99B2     		uxth	r1, r3
+  85 0052 7348     		ldr	r0, .L99+48
+  86 0054 0368     		ldr	r3, [r0]
+  87 0056 0B44     		add	r3, r3, r1
+  88 0058 03EBD373 		add	r3, r3, r3, lsr #31
+  89 005c 5B10     		asrs	r3, r3, #1
+  90 005e 0360     		str	r3, [r0]
+ 159:Src/bldc.c    ****     offsetdcl = (adc_buffer.dcl + offsetdcl) / 2;
+  91              		.loc 1 159 0
+  92 0060 5389     		ldrh	r3, [r2, #10]
+  93 0062 99B2     		uxth	r1, r3
+  94 0064 6F48     		ldr	r0, .L99+52
+  95 0066 0368     		ldr	r3, [r0]
+  96 0068 0B44     		add	r3, r3, r1
+  97 006a 03EBD373 		add	r3, r3, r3, lsr #31
+  98 006e 5B10     		asrs	r3, r3, #1
+  99 0070 0360     		str	r3, [r0]
+ 160:Src/bldc.c    ****     offsetdcr = (adc_buffer.dcr + offsetdcr) / 2;
+ 100              		.loc 1 160 0
+ 101 0072 1389     		ldrh	r3, [r2, #8]
+ 102 0074 9AB2     		uxth	r2, r3
+ 103 0076 6C49     		ldr	r1, .L99+56
+ 104 0078 0B68     		ldr	r3, [r1]
+ 105 007a 1344     		add	r3, r3, r2
+ 106 007c 03EBD373 		add	r3, r3, r3, lsr #31
+ 107 0080 5B10     		asrs	r3, r3, #1
+ 108 0082 0B60     		str	r3, [r1]
+ 109              	.LVL0:
+ 110 0084 7047     		bx	lr
+ 111              	.L2:
+ 149:Src/bldc.c    ****   DMA1->IFCR = DMA_IFCR_CTCIF1;
+ 112              		.loc 1 149 0
+ 113 0086 2DE9F041 		push	{r4, r5, r6, r7, r8, lr}
+ 114              	.LCFI0:
+ 115              		.cfi_def_cfa_offset 24
+ 116              		.cfi_offset 4, -24
+ 117              		.cfi_offset 5, -20
+ 118              		.cfi_offset 6, -16
+ 119              		.cfi_offset 7, -12
+ 120              		.cfi_offset 8, -8
+ 121              		.cfi_offset 14, -4
+ 161:Src/bldc.c    ****     return;
+ 162:Src/bldc.c    ****   }
+ 163:Src/bldc.c    **** 
+ 164:Src/bldc.c    ****   if (buzzerTimer % 1000 == 0) {  // because you get float rounding errors if it would run every ti
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 6
+
+
+ 122              		.loc 1 164 0
+ 123 008a 684B     		ldr	r3, .L99+60
+ 124 008c 1C68     		ldr	r4, [r3]
+ 125 008e 684B     		ldr	r3, .L99+64
+ 126 0090 A3FB0423 		umull	r2, r3, r3, r4
+ 127 0094 9B09     		lsrs	r3, r3, #6
+ 128 0096 4FF47A72 		mov	r2, #1000
+ 129 009a 02FB1343 		mls	r3, r2, r3, r4
+ 130 009e 13BB     		cbnz	r3, .L4
+ 165:Src/bldc.c    ****     batteryVoltage = batteryVoltage * 0.99 + ((float)adc_buffer.batt1 * ((float)BAT_CALIB_REAL_VOLT
+ 131              		.loc 1 165 0
+ 132 00a0 644D     		ldr	r5, .L99+68
+ 133 00a2 2868     		ldr	r0, [r5]	@ float
+ 134 00a4 FFF7FEFF 		bl	__aeabi_f2d
+ 135              	.LVL1:
+ 136 00a8 51A3     		adr	r3, .L99
+ 137 00aa D3E90023 		ldrd	r2, [r3]
+ 138 00ae FFF7FEFF 		bl	__aeabi_dmul
+ 139              	.LVL2:
+ 140 00b2 0646     		mov	r6, r0
+ 141 00b4 0F46     		mov	r7, r1
+ 142 00b6 564B     		ldr	r3, .L99+32
+ 143 00b8 9889     		ldrh	r0, [r3, #12]
+ 144 00ba 80B2     		uxth	r0, r0
+ 145 00bc FFF7FEFF 		bl	__aeabi_ui2f
+ 146              	.LVL3:
+ 147 00c0 5D49     		ldr	r1, .L99+72
+ 148 00c2 FFF7FEFF 		bl	__aeabi_fmul
+ 149              	.LVL4:
+ 150 00c6 FFF7FEFF 		bl	__aeabi_f2d
+ 151              	.LVL5:
+ 152 00ca 4BA3     		adr	r3, .L99+8
+ 153 00cc D3E90023 		ldrd	r2, [r3]
+ 154 00d0 FFF7FEFF 		bl	__aeabi_dmul
+ 155              	.LVL6:
+ 156 00d4 0246     		mov	r2, r0
+ 157 00d6 0B46     		mov	r3, r1
+ 158 00d8 3046     		mov	r0, r6
+ 159 00da 3946     		mov	r1, r7
+ 160 00dc FFF7FEFF 		bl	__aeabi_dadd
+ 161              	.LVL7:
+ 162 00e0 FFF7FEFF 		bl	__aeabi_d2f
+ 163              	.LVL8:
+ 164 00e4 2860     		str	r0, [r5]	@ float
+ 165              	.L4:
+ 166:Src/bldc.c    ****   }
+ 167:Src/bldc.c    **** 
+ 168:Src/bldc.c    ****   //disable PWM when current limit is reached (current chopping)
+ 169:Src/bldc.c    ****   if(ABS((adc_buffer.dcl - offsetdcl) * MOTOR_AMP_CONV_DC_AMP) > DC_CUR_LIMIT || timeout > TIMEOUT 
+ 166              		.loc 1 169 0
+ 167 00e6 4A4B     		ldr	r3, .L99+32
+ 168 00e8 5889     		ldrh	r0, [r3, #10]
+ 169 00ea 80B2     		uxth	r0, r0
+ 170 00ec 4D4B     		ldr	r3, .L99+52
+ 171 00ee 1D68     		ldr	r5, [r3]
+ 172 00f0 401B     		subs	r0, r0, r5
+ 173 00f2 FFF7FEFF 		bl	__aeabi_i2d
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 7
+
+
+ 174              	.LVL9:
+ 175 00f6 42A3     		adr	r3, .L99+16
+ 176 00f8 D3E90023 		ldrd	r2, [r3]
+ 177 00fc FFF7FEFF 		bl	__aeabi_dmul
+ 178              	.LVL10:
+ 179 0100 0022     		movs	r2, #0
+ 180 0102 0023     		movs	r3, #0
+ 181 0104 FFF7FEFF 		bl	__aeabi_dcmplt
+ 182              	.LVL11:
+ 183 0108 80B1     		cbz	r0, .L96
+ 184              		.loc 1 169 0 is_stmt 0 discriminator 1
+ 185 010a 414B     		ldr	r3, .L99+32
+ 186 010c 5889     		ldrh	r0, [r3, #10]
+ 187 010e 80B2     		uxth	r0, r0
+ 188 0110 401B     		subs	r0, r0, r5
+ 189 0112 FFF7FEFF 		bl	__aeabi_i2d
+ 190              	.LVL12:
+ 191 0116 3AA3     		adr	r3, .L99+16
+ 192 0118 D3E90023 		ldrd	r2, [r3]
+ 193 011c FFF7FEFF 		bl	__aeabi_dmul
+ 194              	.LVL13:
+ 195 0120 0022     		movs	r2, #0
+ 196 0122 464B     		ldr	r3, .L99+76
+ 197 0124 FFF7FEFF 		bl	__aeabi_dcmplt
+ 198              	.LVL14:
+ 199 0128 B8B9     		cbnz	r0, .L7
+ 200 012a 0FE0     		b	.L8
+ 201              	.L96:
+ 202              		.loc 1 169 0 discriminator 2
+ 203 012c 384B     		ldr	r3, .L99+32
+ 204 012e 5889     		ldrh	r0, [r3, #10]
+ 205 0130 80B2     		uxth	r0, r0
+ 206 0132 401B     		subs	r0, r0, r5
+ 207 0134 FFF7FEFF 		bl	__aeabi_i2d
+ 208              	.LVL15:
+ 209 0138 31A3     		adr	r3, .L99+16
+ 210 013a D3E90023 		ldrd	r2, [r3]
+ 211 013e FFF7FEFF 		bl	__aeabi_dmul
+ 212              	.LVL16:
+ 213 0142 0022     		movs	r2, #0
+ 214 0144 3E4B     		ldr	r3, .L99+80
+ 215 0146 FFF7FEFF 		bl	__aeabi_dcmpgt
+ 216              	.LVL17:
+ 217 014a 30B9     		cbnz	r0, .L7
+ 218              	.L8:
+ 219              		.loc 1 169 0 discriminator 3
+ 220 014c 3D4B     		ldr	r3, .L99+84
+ 221 014e 1B68     		ldr	r3, [r3]
+ 222 0150 052B     		cmp	r3, #5
+ 223 0152 02D8     		bhi	.L7
+ 224              		.loc 1 169 0 discriminator 4
+ 225 0154 3C4B     		ldr	r3, .L99+88
+ 226 0156 1B78     		ldrb	r3, [r3]	@ zero_extendqisi2
+ 227 0158 2BB9     		cbnz	r3, .L9
+ 228              	.L7:
+ 170:Src/bldc.c    ****     LEFT_TIM->BDTR &= ~TIM_BDTR_MOE;
+ 229              		.loc 1 170 0 is_stmt 1
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 8
+
+
+ 230 015a 3C4A     		ldr	r2, .L99+92
+ 231 015c 536C     		ldr	r3, [r2, #68]
+ 232 015e 23F40043 		bic	r3, r3, #32768
+ 233 0162 5364     		str	r3, [r2, #68]
+ 234 0164 04E0     		b	.L10
+ 235              	.L9:
+ 171:Src/bldc.c    ****     //HAL_GPIO_WritePin(LED_PORT, LED_PIN, 1);
+ 172:Src/bldc.c    ****   } else {
+ 173:Src/bldc.c    ****     LEFT_TIM->BDTR |= TIM_BDTR_MOE;
+ 236              		.loc 1 173 0
+ 237 0166 394A     		ldr	r2, .L99+92
+ 238 0168 536C     		ldr	r3, [r2, #68]
+ 239 016a 43F40043 		orr	r3, r3, #32768
+ 240 016e 5364     		str	r3, [r2, #68]
+ 241              	.L10:
+ 174:Src/bldc.c    ****     //HAL_GPIO_WritePin(LED_PORT, LED_PIN, 0);
+ 175:Src/bldc.c    ****   }
+ 176:Src/bldc.c    **** 
+ 177:Src/bldc.c    ****   if(ABS((adc_buffer.dcr - offsetdcr) * MOTOR_AMP_CONV_DC_AMP)  > DC_CUR_LIMIT || timeout > TIMEOUT
+ 242              		.loc 1 177 0
+ 243 0170 274B     		ldr	r3, .L99+32
+ 244 0172 1889     		ldrh	r0, [r3, #8]
+ 245 0174 80B2     		uxth	r0, r0
+ 246 0176 2C4B     		ldr	r3, .L99+56
+ 247 0178 1D68     		ldr	r5, [r3]
+ 248 017a 401B     		subs	r0, r0, r5
+ 249 017c FFF7FEFF 		bl	__aeabi_i2d
+ 250              	.LVL18:
+ 251 0180 1FA3     		adr	r3, .L99+16
+ 252 0182 D3E90023 		ldrd	r2, [r3]
+ 253 0186 FFF7FEFF 		bl	__aeabi_dmul
+ 254              	.LVL19:
+ 255 018a 0022     		movs	r2, #0
+ 256 018c 0023     		movs	r3, #0
+ 257 018e FFF7FEFF 		bl	__aeabi_dcmplt
+ 258              	.LVL20:
+ 259 0192 80B1     		cbz	r0, .L97
+ 260              		.loc 1 177 0 is_stmt 0 discriminator 1
+ 261 0194 1E4B     		ldr	r3, .L99+32
+ 262 0196 1889     		ldrh	r0, [r3, #8]
+ 263 0198 80B2     		uxth	r0, r0
+ 264 019a 401B     		subs	r0, r0, r5
+ 265 019c FFF7FEFF 		bl	__aeabi_i2d
+ 266              	.LVL21:
+ 267 01a0 17A3     		adr	r3, .L99+16
+ 268 01a2 D3E90023 		ldrd	r2, [r3]
+ 269 01a6 FFF7FEFF 		bl	__aeabi_dmul
+ 270              	.LVL22:
+ 271 01aa 0022     		movs	r2, #0
+ 272 01ac 234B     		ldr	r3, .L99+76
+ 273 01ae FFF7FEFF 		bl	__aeabi_dcmplt
+ 274              	.LVL23:
+ 275 01b2 B8B9     		cbnz	r0, .L13
+ 276 01b4 0FE0     		b	.L14
+ 277              	.L97:
+ 278              		.loc 1 177 0 discriminator 2
+ 279 01b6 164B     		ldr	r3, .L99+32
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 9
+
+
+ 280 01b8 1889     		ldrh	r0, [r3, #8]
+ 281 01ba 80B2     		uxth	r0, r0
+ 282 01bc 401B     		subs	r0, r0, r5
+ 283 01be FFF7FEFF 		bl	__aeabi_i2d
+ 284              	.LVL24:
+ 285 01c2 0FA3     		adr	r3, .L99+16
+ 286 01c4 D3E90023 		ldrd	r2, [r3]
+ 287 01c8 FFF7FEFF 		bl	__aeabi_dmul
+ 288              	.LVL25:
+ 289 01cc 0022     		movs	r2, #0
+ 290 01ce 1C4B     		ldr	r3, .L99+80
+ 291 01d0 FFF7FEFF 		bl	__aeabi_dcmpgt
+ 292              	.LVL26:
+ 293 01d4 30B9     		cbnz	r0, .L13
+ 294              	.L14:
+ 295              		.loc 1 177 0 discriminator 3
+ 296 01d6 1B4B     		ldr	r3, .L99+84
+ 297 01d8 1B68     		ldr	r3, [r3]
+ 298 01da 052B     		cmp	r3, #5
+ 299 01dc 02D8     		bhi	.L13
+ 300              		.loc 1 177 0 discriminator 4
+ 301 01de 1A4B     		ldr	r3, .L99+88
+ 302 01e0 1B78     		ldrb	r3, [r3]	@ zero_extendqisi2
+ 303 01e2 BBBB     		cbnz	r3, .L15
+ 304              	.L13:
+ 178:Src/bldc.c    ****     RIGHT_TIM->BDTR &= ~TIM_BDTR_MOE;
+ 305              		.loc 1 178 0 is_stmt 1
+ 306 01e4 1A4A     		ldr	r2, .L99+96
+ 307 01e6 536C     		ldr	r3, [r2, #68]
+ 308 01e8 23F40043 		bic	r3, r3, #32768
+ 309 01ec 5364     		str	r3, [r2, #68]
+ 310 01ee 36E0     		b	.L16
+ 311              	.L100:
+ 312              		.align	3
+ 313              	.L99:
+ 314 01f0 AE47E17A 		.word	2061584302
+ 315 01f4 14AEEF3F 		.word	1072672276
+ 316 01f8 7B14AE47 		.word	1202590843
+ 317 01fc E17A843F 		.word	1065646817
+ 318 0200 7B14AE47 		.word	1202590843
+ 319 0204 E17A943F 		.word	1066695393
+ 320 0208 00000240 		.word	1073872896
+ 321 020c 00000000 		.word	.LANCHOR0
+ 322 0210 00000000 		.word	adc_buffer
+ 323 0214 00000000 		.word	.LANCHOR1
+ 324 0218 00000000 		.word	.LANCHOR2
+ 325 021c 00000000 		.word	.LANCHOR3
+ 326 0220 00000000 		.word	.LANCHOR4
+ 327 0224 00000000 		.word	.LANCHOR5
+ 328 0228 00000000 		.word	.LANCHOR6
+ 329 022c 00000000 		.word	.LANCHOR7
+ 330 0230 D34D6210 		.word	274877907
+ 331 0234 00000000 		.word	.LANCHOR8
+ 332 0238 17B9CE3C 		.word	1020180759
+ 333 023c 00002EC0 		.word	-1070727168
+ 334 0240 00002E40 		.word	1076756480
+ 335 0244 00000000 		.word	timeout
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 10
+
+
+ 336 0248 00000000 		.word	.LANCHOR9
+ 337 024c 00340140 		.word	1073820672
+ 338 0250 002C0140 		.word	1073818624
+ 339              	.L15:
+ 179:Src/bldc.c    ****   } else {
+ 180:Src/bldc.c    ****     RIGHT_TIM->BDTR |= TIM_BDTR_MOE;
+ 340              		.loc 1 180 0
+ 341 0254 904A     		ldr	r2, .L101
+ 342 0256 536C     		ldr	r3, [r2, #68]
+ 343 0258 43F40043 		orr	r3, r3, #32768
+ 344 025c 5364     		str	r3, [r2, #68]
+ 345              	.L16:
+ 181:Src/bldc.c    ****   }
+ 182:Src/bldc.c    **** 
+ 183:Src/bldc.c    ****   int ul, vl, wl;
+ 184:Src/bldc.c    ****   int ur, vr, wr;
+ 185:Src/bldc.c    **** 
+ 186:Src/bldc.c    ****   //determine next position based on hall sensors
+ 187:Src/bldc.c    ****   uint8_t hall_ul = !(LEFT_HALL_U_PORT->IDR & LEFT_HALL_U_PIN);
+ 346              		.loc 1 187 0
+ 347 025e 8F4A     		ldr	r2, .L101+4
+ 348 0260 9368     		ldr	r3, [r2, #8]
+ 349 0262 13F0200F 		tst	r3, #32
+ 350 0266 0CBF     		ite	eq
+ 351 0268 0121     		moveq	r1, #1
+ 352 026a 0021     		movne	r1, #0
+ 353              	.LVL27:
+ 188:Src/bldc.c    ****   uint8_t hall_vl = !(LEFT_HALL_V_PORT->IDR & LEFT_HALL_V_PIN);
+ 354              		.loc 1 188 0
+ 355 026c 9368     		ldr	r3, [r2, #8]
+ 356 026e 13F0400F 		tst	r3, #64
+ 357 0272 0CBF     		ite	eq
+ 358 0274 0123     		moveq	r3, #1
+ 359 0276 0023     		movne	r3, #0
+ 360              	.LVL28:
+ 189:Src/bldc.c    ****   uint8_t hall_wl = !(LEFT_HALL_W_PORT->IDR & LEFT_HALL_W_PIN);
+ 361              		.loc 1 189 0
+ 362 0278 9268     		ldr	r2, [r2, #8]
+ 363 027a 12F0800F 		tst	r2, #128
+ 364 027e 0CBF     		ite	eq
+ 365 0280 0125     		moveq	r5, #1
+ 366 0282 0025     		movne	r5, #0
+ 367              	.LVL29:
+ 190:Src/bldc.c    **** 
+ 191:Src/bldc.c    ****   uint8_t hall_ur = !(RIGHT_HALL_U_PORT->IDR & RIGHT_HALL_U_PIN);
+ 368              		.loc 1 191 0
+ 369 0284 864A     		ldr	r2, .L101+8
+ 370 0286 9068     		ldr	r0, [r2, #8]
+ 371 0288 10F4806F 		tst	r0, #1024
+ 372 028c 0CBF     		ite	eq
+ 373 028e 0120     		moveq	r0, #1
+ 374 0290 0020     		movne	r0, #0
+ 375              	.LVL30:
+ 192:Src/bldc.c    ****   uint8_t hall_vr = !(RIGHT_HALL_V_PORT->IDR & RIGHT_HALL_V_PIN);
+ 376              		.loc 1 192 0
+ 377 0292 9668     		ldr	r6, [r2, #8]
+ 378 0294 16F4006F 		tst	r6, #2048
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 11
+
+
+ 379 0298 0CBF     		ite	eq
+ 380 029a 0127     		moveq	r7, #1
+ 381 029c 0027     		movne	r7, #0
+ 382              	.LVL31:
+ 193:Src/bldc.c    ****   uint8_t hall_wr = !(RIGHT_HALL_W_PORT->IDR & RIGHT_HALL_W_PIN);
+ 383              		.loc 1 193 0
+ 384 029e 9268     		ldr	r2, [r2, #8]
+ 385 02a0 12F4805F 		tst	r2, #4096
+ 386              	.LVL32:
+ 194:Src/bldc.c    **** 
+ 195:Src/bldc.c    ****   uint8_t halll = hall_ul * 1 + hall_vl * 2 + hall_wl * 4;
+ 387              		.loc 1 195 0
+ 388 02a4 03EB4503 		add	r3, r3, r5, lsl #1
+ 389              	.LVL33:
+ 390 02a8 01EB4303 		add	r3, r1, r3, lsl #1
+ 391 02ac DBB2     		uxtb	r3, r3
+ 392              	.LVL34:
+ 196:Src/bldc.c    ****   posl          = hall_to_pos[halll];
+ 393              		.loc 1 196 0
+ 394 02ae 7D4E     		ldr	r6, .L101+12
+ 395 02b0 F35C     		ldrb	r3, [r6, r3]	@ zero_extendqisi2
+ 396              	.LVL35:
+ 397 02b2 7D49     		ldr	r1, .L101+16
+ 398              	.LVL36:
+ 399 02b4 0B60     		str	r3, [r1]
+ 197:Src/bldc.c    ****   posl += 2;
+ 400              		.loc 1 197 0
+ 401 02b6 0B68     		ldr	r3, [r1]
+ 402 02b8 03F10203 		add	r3, r3, #2
+ 403 02bc 0B60     		str	r3, [r1]
+ 198:Src/bldc.c    ****   posl %= 6;
+ 404              		.loc 1 198 0
+ 405 02be 0D68     		ldr	r5, [r1]
+ 406              	.LVL37:
+ 407 02c0 7A4B     		ldr	r3, .L101+20
+ 408 02c2 83FB05E2 		smull	lr, r2, r3, r5
+ 409 02c6 A2EBE572 		sub	r2, r2, r5, asr #31
+ 410 02ca 02EB4202 		add	r2, r2, r2, lsl #1
+ 411 02ce 4FEA420E 		lsl	lr, r2, #1
+ 412 02d2 CEEB0502 		rsb	r2, lr, r5
+ 413 02d6 0A60     		str	r2, [r1]
+ 199:Src/bldc.c    **** 
+ 200:Src/bldc.c    ****   uint8_t hallr = hall_ur * 1 + hall_vr * 2 + hall_wr * 4;
+ 414              		.loc 1 200 0
+ 415 02d8 0CBF     		ite	eq
+ 416 02da 0222     		moveq	r2, #2
+ 417 02dc 0022     		movne	r2, #0
+ 418 02de 3A44     		add	r2, r2, r7
+ 419 02e0 00EB4202 		add	r2, r0, r2, lsl #1
+ 420 02e4 D2B2     		uxtb	r2, r2
+ 421              	.LVL38:
+ 201:Src/bldc.c    ****   posr          = hall_to_pos[hallr];
+ 422              		.loc 1 201 0
+ 423 02e6 B05C     		ldrb	r0, [r6, r2]	@ zero_extendqisi2
+ 424              	.LVL39:
+ 425 02e8 714A     		ldr	r2, .L101+24
+ 426              	.LVL40:
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 12
+
+
+ 427 02ea 1060     		str	r0, [r2]
+ 202:Src/bldc.c    ****   posr += 2;
+ 428              		.loc 1 202 0
+ 429 02ec 1068     		ldr	r0, [r2]
+ 430 02ee 0230     		adds	r0, r0, #2
+ 431 02f0 1060     		str	r0, [r2]
+ 203:Src/bldc.c    ****   posr %= 6;
+ 432              		.loc 1 203 0
+ 433 02f2 1068     		ldr	r0, [r2]
+ 434 02f4 83FB0053 		smull	r5, r3, r3, r0
+ 435 02f8 A3EBE073 		sub	r3, r3, r0, asr #31
+ 436 02fc 03EB4303 		add	r3, r3, r3, lsl #1
+ 437 0300 5D00     		lsls	r5, r3, #1
+ 438 0302 431B     		subs	r3, r0, r5
+ 439 0304 1360     		str	r3, [r2]
+ 204:Src/bldc.c    **** 
+ 205:Src/bldc.c    ****   blockPhaseCurrent(posl, adc_buffer.rl1 - offsetrl1, adc_buffer.rl2 - offsetrl2, &curl);
+ 440              		.loc 1 205 0
+ 441 0306 0968     		ldr	r1, [r1]
+ 442 0308 6A48     		ldr	r0, .L101+28
+ 443 030a 8388     		ldrh	r3, [r0, #4]
+ 444 030c 9BB2     		uxth	r3, r3
+ 445 030e 6A4A     		ldr	r2, .L101+32
+ 446 0310 1268     		ldr	r2, [r2]
+ 447 0312 9A1A     		subs	r2, r3, r2
+ 448 0314 C388     		ldrh	r3, [r0, #6]
+ 449 0316 9BB2     		uxth	r3, r3
+ 450 0318 6848     		ldr	r0, .L101+36
+ 451 031a 0068     		ldr	r0, [r0]
+ 452 031c 1B1A     		subs	r3, r3, r0
+ 453              	.LVL41:
+ 454              	.LBB16:
+ 455              	.LBB17:
+  79:Src/bldc.c    ****     case 0:
+ 456              		.loc 1 79 0
+ 457 031e 0529     		cmp	r1, #5
+ 458 0320 18D8     		bhi	.L17
+ 459 0322 DFE801F0 		tbb	[pc, r1]
+ 460              	.LVL42:
+ 461              	.L19:
+ 462 0326 03       		.byte	(.L18-.L19)/2
+ 463 0327 07       		.byte	(.L20-.L19)/2
+ 464 0328 0A       		.byte	(.L21-.L19)/2
+ 465 0329 0D       		.byte	(.L22-.L19)/2
+ 466 032a 10       		.byte	(.L23-.L19)/2
+ 467 032b 13       		.byte	(.L24-.L19)/2
+ 468              		.p2align 1
+ 469              	.L18:
+  81:Src/bldc.c    ****       // *u = 0;
+ 470              		.loc 1 81 0
+ 471 032c D31A     		subs	r3, r2, r3
+ 472              	.LVL43:
+ 473 032e 644A     		ldr	r2, .L101+40
+ 474              	.LVL44:
+ 475 0330 1360     		str	r3, [r2]
+ 476 0332 12E0     		b	.L25
+ 477              	.LVL45:
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 13
+
+
+ 478              	.L20:
+  87:Src/bldc.c    ****       // *u = -pwm;
+ 479              		.loc 1 87 0
+ 480 0334 624B     		ldr	r3, .L101+40
+ 481              	.LVL46:
+ 482 0336 1A60     		str	r2, [r3]
+ 483 0338 0FE0     		b	.L25
+ 484              	.LVL47:
+ 485              	.L21:
+  93:Src/bldc.c    ****       // *u = -pwm;
+ 486              		.loc 1 93 0
+ 487 033a 614B     		ldr	r3, .L101+40
+ 488              	.LVL48:
+ 489 033c 1A60     		str	r2, [r3]
+ 490 033e 0CE0     		b	.L25
+ 491              	.LVL49:
+ 492              	.L22:
+  99:Src/bldc.c    ****       // *u = 0;
+ 493              		.loc 1 99 0
+ 494 0340 5F4A     		ldr	r2, .L101+40
+ 495              	.LVL50:
+ 496 0342 1360     		str	r3, [r2]
+ 497 0344 09E0     		b	.L25
+ 498              	.LVL51:
+ 499              	.L23:
+ 105:Src/bldc.c    ****       // *u = pwm;
+ 500              		.loc 1 105 0
+ 501 0346 5E4A     		ldr	r2, .L101+40
+ 502              	.LVL52:
+ 503 0348 1360     		str	r3, [r2]
+ 504 034a 06E0     		b	.L25
+ 505              	.LVL53:
+ 506              	.L24:
+ 111:Src/bldc.c    ****       // *u = pwm;
+ 507              		.loc 1 111 0
+ 508 034c 9B1A     		subs	r3, r3, r2
+ 509              	.LVL54:
+ 510 034e 5C4A     		ldr	r2, .L101+40
+ 511              	.LVL55:
+ 512 0350 1360     		str	r3, [r2]
+ 513 0352 02E0     		b	.L25
+ 514              	.LVL56:
+ 515              	.L17:
+ 117:Src/bldc.c    ****       // *u = 0;
+ 516              		.loc 1 117 0
+ 517 0354 0022     		movs	r2, #0
+ 518              	.LVL57:
+ 519 0356 5A4B     		ldr	r3, .L101+40
+ 520              	.LVL58:
+ 521 0358 1A60     		str	r2, [r3]
+ 522              	.L25:
+ 523              	.LVL59:
+ 524              	.LBE17:
+ 525              	.LBE16:
+ 206:Src/bldc.c    **** 
+ 207:Src/bldc.c    ****   //setScopeChannel(2, (adc_buffer.rl1 - offsetrl1) / 8);
+ 208:Src/bldc.c    ****   //setScopeChannel(3, (adc_buffer.rl2 - offsetrl2) / 8);
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 14
+
+
+ 209:Src/bldc.c    **** 
+ 210:Src/bldc.c    **** 
+ 211:Src/bldc.c    ****   // uint8_t buzz(uint16_t *notes, uint32_t len){
+ 212:Src/bldc.c    ****     // static uint32_t counter = 0;
+ 213:Src/bldc.c    ****     // static uint32_t timer = 0;
+ 214:Src/bldc.c    ****     // if(len == 0){
+ 215:Src/bldc.c    ****         // return(0);
+ 216:Src/bldc.c    ****     // }
+ 217:Src/bldc.c    ****     
+ 218:Src/bldc.c    ****     // struct {
+ 219:Src/bldc.c    ****         // uint16_t freq : 4;
+ 220:Src/bldc.c    ****         // uint16_t volume : 4;
+ 221:Src/bldc.c    ****         // uint16_t time : 8;
+ 222:Src/bldc.c    ****     // } note = notes[counter];
+ 223:Src/bldc.c    ****     
+ 224:Src/bldc.c    ****     // if(timer / 500 == note.time){
+ 225:Src/bldc.c    ****         // timer = 0;
+ 226:Src/bldc.c    ****         // counter++;
+ 227:Src/bldc.c    ****     // }
+ 228:Src/bldc.c    ****     
+ 229:Src/bldc.c    ****     // if(counter == len){
+ 230:Src/bldc.c    ****         // counter = 0;
+ 231:Src/bldc.c    ****     // }
+ 232:Src/bldc.c    **** 
+ 233:Src/bldc.c    ****     // timer++;
+ 234:Src/bldc.c    ****     // return(note.freq);
+ 235:Src/bldc.c    ****   // }
+ 236:Src/bldc.c    **** 
+ 237:Src/bldc.c    **** 
+ 238:Src/bldc.c    ****   //create square wave for buzzer
+ 239:Src/bldc.c    ****   buzzerTimer++;
+ 526              		.loc 1 239 0
+ 527 035a 0134     		adds	r4, r4, #1
+ 528 035c 594B     		ldr	r3, .L101+44
+ 529 035e 1C60     		str	r4, [r3]
+ 240:Src/bldc.c    ****   if (buzzerFreq != 0 && (buzzerTimer / 5000) % (buzzerPattern + 1) == 0) {
+ 530              		.loc 1 240 0
+ 531 0360 594B     		ldr	r3, .L101+48
+ 532 0362 1868     		ldr	r0, [r3]
+ 533 0364 A8B1     		cbz	r0, .L26
+ 534              		.loc 1 240 0 is_stmt 0 discriminator 1
+ 535 0366 594B     		ldr	r3, .L101+52
+ 536 0368 A3FB0423 		umull	r2, r3, r3, r4
+ 537 036c 1B0B     		lsrs	r3, r3, #12
+ 538 036e 584A     		ldr	r2, .L101+56
+ 539 0370 1268     		ldr	r2, [r2]
+ 540 0372 0132     		adds	r2, r2, #1
+ 541 0374 B3FBF2F1 		udiv	r1, r3, r2
+ 542 0378 02FB1133 		mls	r3, r2, r1, r3
+ 543 037c 4BB9     		cbnz	r3, .L26
+ 241:Src/bldc.c    ****     if (buzzerTimer % buzzerFreq == 0) {
+ 544              		.loc 1 241 0 is_stmt 1
+ 545 037e B4FBF0F3 		udiv	r3, r4, r0
+ 546 0382 00FB1344 		mls	r4, r0, r3, r4
+ 547 0386 4CB9     		cbnz	r4, .L27
+ 242:Src/bldc.c    ****       HAL_GPIO_TogglePin(BUZZER_PORT, BUZZER_PIN);
+ 548              		.loc 1 242 0
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 15
+
+
+ 549 0388 1021     		movs	r1, #16
+ 550 038a 5248     		ldr	r0, .L101+60
+ 551 038c FFF7FEFF 		bl	HAL_GPIO_TogglePin
+ 552              	.LVL60:
+ 553 0390 04E0     		b	.L27
+ 554              	.L26:
+ 243:Src/bldc.c    ****     }
+ 244:Src/bldc.c    ****   } else {
+ 245:Src/bldc.c    ****       HAL_GPIO_WritePin(BUZZER_PORT, BUZZER_PIN, 0);
+ 555              		.loc 1 245 0
+ 556 0392 0022     		movs	r2, #0
+ 557 0394 1021     		movs	r1, #16
+ 558 0396 4F48     		ldr	r0, .L101+60
+ 559 0398 FFF7FEFF 		bl	HAL_GPIO_WritePin
+ 560              	.LVL61:
+ 561              	.L27:
+ 246:Src/bldc.c    ****   }
+ 247:Src/bldc.c    **** 
+ 248:Src/bldc.c    ****   //update PWM channels based on position
+ 249:Src/bldc.c    ****   blockPWM(pwml, posl, &ul, &vl, &wl);
+ 562              		.loc 1 249 0
+ 563 039c 4E4B     		ldr	r3, .L101+64
+ 564 039e 1C68     		ldr	r4, [r3]
+ 565 03a0 414B     		ldr	r3, .L101+16
+ 566 03a2 1B68     		ldr	r3, [r3]
+ 567              	.LVL62:
+ 568              	.LBB18:
+ 569              	.LBB19:
+  40:Src/bldc.c    ****     case 0:
+ 570              		.loc 1 40 0
+ 571 03a4 052B     		cmp	r3, #5
+ 572 03a6 1ED8     		bhi	.L82
+ 573 03a8 DFE803F0 		tbb	[pc, r3]
+ 574              	.L30:
+ 575 03ac 03       		.byte	(.L29-.L30)/2
+ 576 03ad 07       		.byte	(.L31-.L30)/2
+ 577 03ae 0B       		.byte	(.L32-.L30)/2
+ 578 03af 0F       		.byte	(.L33-.L30)/2
+ 579 03b0 13       		.byte	(.L34-.L30)/2
+ 580 03b1 18       		.byte	(.L35-.L30)/2
+ 581              		.p2align 1
+ 582              	.L29:
+ 583              	.LVL63:
+  44:Src/bldc.c    ****       break;
+ 584              		.loc 1 44 0
+ 585 03b2 C4F1000E 		rsb	lr, r4, #0
+ 586              	.LVL64:
+  42:Src/bldc.c    ****       *v = pwm;
+ 587              		.loc 1 42 0
+ 588 03b6 0025     		movs	r5, #0
+ 589 03b8 19E0     		b	.L28
+ 590              	.LVL65:
+ 591              	.L31:
+  47:Src/bldc.c    ****       *v = pwm;
+ 592              		.loc 1 47 0
+ 593 03ba 6542     		negs	r5, r4
+ 594              	.LVL66:
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 16
+
+
+  49:Src/bldc.c    ****       break;
+ 595              		.loc 1 49 0
+ 596 03bc 4FF0000E 		mov	lr, #0
+ 597 03c0 15E0     		b	.L28
+ 598              	.LVL67:
+ 599              	.L32:
+  52:Src/bldc.c    ****       *v = 0;
+ 600              		.loc 1 52 0
+ 601 03c2 6542     		negs	r5, r4
+ 602              	.LVL68:
+  54:Src/bldc.c    ****       break;
+ 603              		.loc 1 54 0
+ 604 03c4 A646     		mov	lr, r4
+  53:Src/bldc.c    ****       *w = pwm;
+ 605              		.loc 1 53 0
+ 606 03c6 0024     		movs	r4, #0
+ 607              	.LVL69:
+ 608 03c8 11E0     		b	.L28
+ 609              	.LVL70:
+ 610              	.L33:
+  59:Src/bldc.c    ****       break;
+ 611              		.loc 1 59 0
+ 612 03ca A646     		mov	lr, r4
+  58:Src/bldc.c    ****       *w = pwm;
+ 613              		.loc 1 58 0
+ 614 03cc 6442     		negs	r4, r4
+ 615              	.LVL71:
+  57:Src/bldc.c    ****       *v = -pwm;
+ 616              		.loc 1 57 0
+ 617 03ce 0025     		movs	r5, #0
+ 618 03d0 0DE0     		b	.L28
+ 619              	.LVL72:
+ 620              	.L34:
+  62:Src/bldc.c    ****       *v = -pwm;
+ 621              		.loc 1 62 0
+ 622 03d2 2546     		mov	r5, r4
+  63:Src/bldc.c    ****       *w = 0;
+ 623              		.loc 1 63 0
+ 624 03d4 6442     		negs	r4, r4
+ 625              	.LVL73:
+  64:Src/bldc.c    ****       break;
+ 626              		.loc 1 64 0
+ 627 03d6 4FF0000E 		mov	lr, #0
+ 628 03da 08E0     		b	.L28
+ 629              	.LVL74:
+ 630              	.L35:
+  69:Src/bldc.c    ****       break;
+ 631              		.loc 1 69 0
+ 632 03dc C4F1000E 		rsb	lr, r4, #0
+ 633              	.LVL75:
+  67:Src/bldc.c    ****       *v = 0;
+ 634              		.loc 1 67 0
+ 635 03e0 2546     		mov	r5, r4
+  68:Src/bldc.c    ****       *w = -pwm;
+ 636              		.loc 1 68 0
+ 637 03e2 0024     		movs	r4, #0
+ 638              	.LVL76:
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 17
+
+
+ 639 03e4 03E0     		b	.L28
+ 640              	.LVL77:
+ 641              	.L82:
+  74:Src/bldc.c    ****   }
+ 642              		.loc 1 74 0
+ 643 03e6 4FF0000E 		mov	lr, #0
+  73:Src/bldc.c    ****       *w = 0;
+ 644              		.loc 1 73 0
+ 645 03ea 7446     		mov	r4, lr
+ 646              	.LVL78:
+  72:Src/bldc.c    ****       *v = 0;
+ 647              		.loc 1 72 0
+ 648 03ec 7546     		mov	r5, lr
+ 649              	.L28:
+ 650              	.LVL79:
+ 651              	.LBE19:
+ 652              	.LBE18:
+ 250:Src/bldc.c    ****   blockPWM(pwmr, posr, &ur, &vr, &wr);
+ 653              		.loc 1 250 0
+ 654 03ee 3B4B     		ldr	r3, .L101+68
+ 655 03f0 1A68     		ldr	r2, [r3]
+ 656 03f2 2F4B     		ldr	r3, .L101+24
+ 657 03f4 1B68     		ldr	r3, [r3]
+ 658              	.LVL80:
+ 659              	.LBB20:
+ 660              	.LBB21:
+  40:Src/bldc.c    ****     case 0:
+ 661              		.loc 1 40 0
+ 662 03f6 052B     		cmp	r3, #5
+ 663 03f8 1AD8     		bhi	.L83
+ 664 03fa DFE803F0 		tbb	[pc, r3]
+ 665              	.L38:
+ 666 03fe 03       		.byte	(.L37-.L38)/2
+ 667 03ff 06       		.byte	(.L39-.L38)/2
+ 668 0400 09       		.byte	(.L40-.L38)/2
+ 669 0401 0D       		.byte	(.L41-.L38)/2
+ 670 0402 11       		.byte	(.L42-.L38)/2
+ 671 0403 15       		.byte	(.L43-.L38)/2
+ 672              		.p2align 1
+ 673              	.L37:
+ 674              	.LVL81:
+  44:Src/bldc.c    ****       break;
+ 675              		.loc 1 44 0
+ 676 0404 5642     		negs	r6, r2
+ 677              	.LVL82:
+  42:Src/bldc.c    ****       *v = pwm;
+ 678              		.loc 1 42 0
+ 679 0406 0021     		movs	r1, #0
+ 680 0408 15E0     		b	.L36
+ 681              	.LVL83:
+ 682              	.L39:
+  47:Src/bldc.c    ****       *v = pwm;
+ 683              		.loc 1 47 0
+ 684 040a 5142     		negs	r1, r2
+ 685              	.LVL84:
+  49:Src/bldc.c    ****       break;
+ 686              		.loc 1 49 0
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 18
+
+
+ 687 040c 0026     		movs	r6, #0
+ 688 040e 12E0     		b	.L36
+ 689              	.LVL85:
+ 690              	.L40:
+  52:Src/bldc.c    ****       *v = 0;
+ 691              		.loc 1 52 0
+ 692 0410 5142     		negs	r1, r2
+ 693              	.LVL86:
+  54:Src/bldc.c    ****       break;
+ 694              		.loc 1 54 0
+ 695 0412 1646     		mov	r6, r2
+  53:Src/bldc.c    ****       *w = pwm;
+ 696              		.loc 1 53 0
+ 697 0414 0022     		movs	r2, #0
+ 698              	.LVL87:
+ 699 0416 0EE0     		b	.L36
+ 700              	.LVL88:
+ 701              	.L41:
+  59:Src/bldc.c    ****       break;
+ 702              		.loc 1 59 0
+ 703 0418 1646     		mov	r6, r2
+  58:Src/bldc.c    ****       *w = pwm;
+ 704              		.loc 1 58 0
+ 705 041a 5242     		negs	r2, r2
+ 706              	.LVL89:
+  57:Src/bldc.c    ****       *v = -pwm;
+ 707              		.loc 1 57 0
+ 708 041c 0021     		movs	r1, #0
+ 709 041e 0AE0     		b	.L36
+ 710              	.LVL90:
+ 711              	.L42:
+  62:Src/bldc.c    ****       *v = -pwm;
+ 712              		.loc 1 62 0
+ 713 0420 1146     		mov	r1, r2
+  63:Src/bldc.c    ****       *w = 0;
+ 714              		.loc 1 63 0
+ 715 0422 5242     		negs	r2, r2
+ 716              	.LVL91:
+  64:Src/bldc.c    ****       break;
+ 717              		.loc 1 64 0
+ 718 0424 0026     		movs	r6, #0
+ 719 0426 06E0     		b	.L36
+ 720              	.LVL92:
+ 721              	.L43:
+  69:Src/bldc.c    ****       break;
+ 722              		.loc 1 69 0
+ 723 0428 5642     		negs	r6, r2
+ 724              	.LVL93:
+  67:Src/bldc.c    ****       *v = 0;
+ 725              		.loc 1 67 0
+ 726 042a 1146     		mov	r1, r2
+  68:Src/bldc.c    ****       *w = -pwm;
+ 727              		.loc 1 68 0
+ 728 042c 0022     		movs	r2, #0
+ 729              	.LVL94:
+ 730 042e 02E0     		b	.L36
+ 731              	.LVL95:
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 19
+
+
+ 732              	.L83:
+  74:Src/bldc.c    ****   }
+ 733              		.loc 1 74 0
+ 734 0430 0026     		movs	r6, #0
+  73:Src/bldc.c    ****       *w = 0;
+ 735              		.loc 1 73 0
+ 736 0432 3246     		mov	r2, r6
+ 737              	.LVL96:
+  72:Src/bldc.c    ****       *v = 0;
+ 738              		.loc 1 72 0
+ 739 0434 3146     		mov	r1, r6
+ 740              	.L36:
+ 741              	.LVL97:
+ 742              	.LBE21:
+ 743              	.LBE20:
+ 251:Src/bldc.c    **** 
+ 252:Src/bldc.c    ****   int weakul, weakvl, weakwl;
+ 253:Src/bldc.c    ****   if (pwml > 0) {
+ 744              		.loc 1 253 0
+ 745 0436 284B     		ldr	r3, .L101+64
+ 746 0438 1B68     		ldr	r3, [r3]
+ 747 043a 002B     		cmp	r3, #0
+ 748 043c 52DD     		ble	.L44
+ 254:Src/bldc.c    ****     blockPWM(weakl, (posl+5) % 6, &weakul, &weakvl, &weakwl);
+ 749              		.loc 1 254 0
+ 750 043e 284B     		ldr	r3, .L101+72
+ 751 0440 1868     		ldr	r0, [r3]
+ 752 0442 194B     		ldr	r3, .L101+16
+ 753 0444 1F68     		ldr	r7, [r3]
+ 754              	.LVL98:
+ 755 0446 0537     		adds	r7, r7, #5
+ 756 0448 184B     		ldr	r3, .L101+20
+ 757 044a 83FB07C3 		smull	ip, r3, r3, r7
+ 758 044e A3EBE773 		sub	r3, r3, r7, asr #31
+ 759 0452 03EB4303 		add	r3, r3, r3, lsl #1
+ 760 0456 4FEA430C 		lsl	ip, r3, #1
+ 761 045a CCEB0703 		rsb	r3, ip, r7
+ 762              	.LVL99:
+ 763              	.LBB22:
+ 764              	.LBB23:
+  40:Src/bldc.c    ****     case 0:
+ 765              		.loc 1 40 0
+ 766 045e 052B     		cmp	r3, #5
+ 767 0460 6FD8     		bhi	.L84
+ 768 0462 DFE803F0 		tbb	[pc, r3]
+ 769              	.L47:
+ 770 0466 03       		.byte	(.L46-.L47)/2
+ 771 0467 06       		.byte	(.L48-.L47)/2
+ 772 0468 09       		.byte	(.L49-.L47)/2
+ 773 0469 0D       		.byte	(.L50-.L47)/2
+ 774 046a 11       		.byte	(.L51-.L47)/2
+ 775 046b 15       		.byte	(.L52-.L47)/2
+ 776              		.p2align 1
+ 777              	.L46:
+ 778              	.LVL100:
+  44:Src/bldc.c    ****       break;
+ 779              		.loc 1 44 0
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 20
+
+
+ 780 046c 4342     		negs	r3, r0
+ 781              	.LVL101:
+  42:Src/bldc.c    ****       *v = pwm;
+ 782              		.loc 1 42 0
+ 783 046e 0027     		movs	r7, #0
+ 784 0470 6DE0     		b	.L45
+ 785              	.LVL102:
+ 786              	.L48:
+  47:Src/bldc.c    ****       *v = pwm;
+ 787              		.loc 1 47 0
+ 788 0472 4742     		negs	r7, r0
+ 789              	.LVL103:
+  49:Src/bldc.c    ****       break;
+ 790              		.loc 1 49 0
+ 791 0474 0023     		movs	r3, #0
+ 792              	.LVL104:
+ 793 0476 6AE0     		b	.L45
+ 794              	.LVL105:
+ 795              	.L49:
+  52:Src/bldc.c    ****       *v = 0;
+ 796              		.loc 1 52 0
+ 797 0478 4742     		negs	r7, r0
+ 798              	.LVL106:
+  54:Src/bldc.c    ****       break;
+ 799              		.loc 1 54 0
+ 800 047a 0346     		mov	r3, r0
+ 801              	.LVL107:
+  53:Src/bldc.c    ****       *w = pwm;
+ 802              		.loc 1 53 0
+ 803 047c 0020     		movs	r0, #0
+ 804              	.LVL108:
+ 805 047e 66E0     		b	.L45
+ 806              	.LVL109:
+ 807              	.L50:
+  59:Src/bldc.c    ****       break;
+ 808              		.loc 1 59 0
+ 809 0480 0346     		mov	r3, r0
+ 810              	.LVL110:
+  58:Src/bldc.c    ****       *w = pwm;
+ 811              		.loc 1 58 0
+ 812 0482 4042     		negs	r0, r0
+ 813              	.LVL111:
+  57:Src/bldc.c    ****       *v = -pwm;
+ 814              		.loc 1 57 0
+ 815 0484 0027     		movs	r7, #0
+ 816 0486 62E0     		b	.L45
+ 817              	.LVL112:
+ 818              	.L51:
+  62:Src/bldc.c    ****       *v = -pwm;
+ 819              		.loc 1 62 0
+ 820 0488 0746     		mov	r7, r0
+  63:Src/bldc.c    ****       *w = 0;
+ 821              		.loc 1 63 0
+ 822 048a 4042     		negs	r0, r0
+ 823              	.LVL113:
+  64:Src/bldc.c    ****       break;
+ 824              		.loc 1 64 0
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 21
+
+
+ 825 048c 0023     		movs	r3, #0
+ 826              	.LVL114:
+ 827 048e 5EE0     		b	.L45
+ 828              	.LVL115:
+ 829              	.L52:
+  69:Src/bldc.c    ****       break;
+ 830              		.loc 1 69 0
+ 831 0490 4342     		negs	r3, r0
+ 832              	.LVL116:
+  67:Src/bldc.c    ****       *v = 0;
+ 833              		.loc 1 67 0
+ 834 0492 0746     		mov	r7, r0
+  68:Src/bldc.c    ****       *w = -pwm;
+ 835              		.loc 1 68 0
+ 836 0494 0020     		movs	r0, #0
+ 837              	.LVL117:
+ 838 0496 5AE0     		b	.L45
+ 839              	.L102:
+ 840              		.align	2
+ 841              	.L101:
+ 842 0498 002C0140 		.word	1073818624
+ 843 049c 000C0140 		.word	1073810432
+ 844 04a0 00100140 		.word	1073811456
+ 845 04a4 00000000 		.word	.LANCHOR10
+ 846 04a8 00000000 		.word	.LANCHOR11
+ 847 04ac ABAAAA2A 		.word	715827883
+ 848 04b0 00000000 		.word	.LANCHOR12
+ 849 04b4 00000000 		.word	adc_buffer
+ 850 04b8 00000000 		.word	.LANCHOR1
+ 851 04bc 00000000 		.word	.LANCHOR2
+ 852 04c0 00000000 		.word	.LANCHOR13
+ 853 04c4 00000000 		.word	.LANCHOR7
+ 854 04c8 00000000 		.word	.LANCHOR14
+ 855 04cc 5917B7D1 		.word	-776530087
+ 856 04d0 00000000 		.word	.LANCHOR15
+ 857 04d4 00080140 		.word	1073809408
+ 858 04d8 00000000 		.word	.LANCHOR16
+ 859 04dc 00000000 		.word	.LANCHOR17
+ 860 04e0 00000000 		.word	.LANCHOR18
+ 861              	.LVL118:
+ 862              	.L44:
+ 863              	.LBE23:
+ 864              	.LBE22:
+ 255:Src/bldc.c    ****   } else {
+ 256:Src/bldc.c    ****     blockPWM(-weakl, (posl+1) % 6, &weakul, &weakvl, &weakwl);
+ 865              		.loc 1 256 0
+ 866 04e4 814B     		ldr	r3, .L103
+ 867 04e6 1F68     		ldr	r7, [r3]
+ 868              	.LVL119:
+ 869 04e8 7842     		negs	r0, r7
+ 870 04ea 814B     		ldr	r3, .L103+4
+ 871 04ec 1B68     		ldr	r3, [r3]
+ 872 04ee 03F1010C 		add	ip, r3, #1
+ 873 04f2 804B     		ldr	r3, .L103+8
+ 874 04f4 83FB0C83 		smull	r8, r3, r3, ip
+ 875 04f8 A3EBEC73 		sub	r3, r3, ip, asr #31
+ 876 04fc 03EB4303 		add	r3, r3, r3, lsl #1
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 22
+
+
+ 877 0500 4FEA4308 		lsl	r8, r3, #1
+ 878 0504 C8EB0C03 		rsb	r3, r8, ip
+ 879              	.LVL120:
+ 880              	.LBB25:
+ 881              	.LBB26:
+  40:Src/bldc.c    ****     case 0:
+ 882              		.loc 1 40 0
+ 883 0508 052B     		cmp	r3, #5
+ 884 050a 04D8     		bhi	.L53
+ 885 050c DFE803F0 		tbb	[pc, r3]
+ 886              	.L54:
+ 887 0510 1D       		.byte	(.L85-.L54)/2
+ 888 0511 07       		.byte	(.L55-.L54)/2
+ 889 0512 09       		.byte	(.L56-.L54)/2
+ 890 0513 0C       		.byte	(.L57-.L54)/2
+ 891 0514 10       		.byte	(.L58-.L54)/2
+ 892 0515 15       		.byte	(.L59-.L54)/2
+ 893              		.p2align 1
+ 894              	.L53:
+  74:Src/bldc.c    ****   }
+ 895              		.loc 1 74 0
+ 896 0516 0023     		movs	r3, #0
+ 897              	.LVL121:
+  73:Src/bldc.c    ****       *w = 0;
+ 898              		.loc 1 73 0
+ 899 0518 1846     		mov	r0, r3
+ 900              	.LVL122:
+  72:Src/bldc.c    ****       *v = 0;
+ 901              		.loc 1 72 0
+ 902 051a 1F46     		mov	r7, r3
+ 903              	.LVL123:
+ 904 051c 17E0     		b	.L45
+ 905              	.LVL124:
+ 906              	.L55:
+  49:Src/bldc.c    ****       break;
+ 907              		.loc 1 49 0
+ 908 051e 0023     		movs	r3, #0
+ 909              	.LVL125:
+ 910 0520 15E0     		b	.L45
+ 911              	.LVL126:
+ 912              	.L56:
+  54:Src/bldc.c    ****       break;
+ 913              		.loc 1 54 0
+ 914 0522 0346     		mov	r3, r0
+ 915              	.LVL127:
+  53:Src/bldc.c    ****       *w = pwm;
+ 916              		.loc 1 53 0
+ 917 0524 0020     		movs	r0, #0
+ 918              	.LVL128:
+ 919 0526 12E0     		b	.L45
+ 920              	.LVL129:
+ 921              	.L57:
+  59:Src/bldc.c    ****       break;
+ 922              		.loc 1 59 0
+ 923 0528 0346     		mov	r3, r0
+ 924              	.LVL130:
+  58:Src/bldc.c    ****       *w = pwm;
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 23
+
+
+ 925              		.loc 1 58 0
+ 926 052a 3846     		mov	r0, r7
+ 927              	.LVL131:
+  57:Src/bldc.c    ****       *v = -pwm;
+ 928              		.loc 1 57 0
+ 929 052c 0027     		movs	r7, #0
+ 930              	.LVL132:
+ 931 052e 0EE0     		b	.L45
+ 932              	.LVL133:
+ 933              	.L58:
+ 934 0530 3B46     		mov	r3, r7
+ 935              	.LVL134:
+  62:Src/bldc.c    ****       *v = -pwm;
+ 936              		.loc 1 62 0
+ 937 0532 0746     		mov	r7, r0
+ 938              	.LVL135:
+  63:Src/bldc.c    ****       *w = 0;
+ 939              		.loc 1 63 0
+ 940 0534 1846     		mov	r0, r3
+ 941              	.LVL136:
+  64:Src/bldc.c    ****       break;
+ 942              		.loc 1 64 0
+ 943 0536 0023     		movs	r3, #0
+ 944              	.LVL137:
+ 945 0538 09E0     		b	.L45
+ 946              	.LVL138:
+ 947              	.L59:
+  69:Src/bldc.c    ****       break;
+ 948              		.loc 1 69 0
+ 949 053a 3B46     		mov	r3, r7
+ 950              	.LVL139:
+  67:Src/bldc.c    ****       *v = 0;
+ 951              		.loc 1 67 0
+ 952 053c 0746     		mov	r7, r0
+ 953              	.LVL140:
+  68:Src/bldc.c    ****       *w = -pwm;
+ 954              		.loc 1 68 0
+ 955 053e 0020     		movs	r0, #0
+ 956              	.LVL141:
+ 957 0540 05E0     		b	.L45
+ 958              	.LVL142:
+ 959              	.L84:
+ 960              	.LBE26:
+ 961              	.LBE25:
+ 962              	.LBB28:
+ 963              	.LBB24:
+  74:Src/bldc.c    ****   }
+ 964              		.loc 1 74 0
+ 965 0542 0023     		movs	r3, #0
+ 966              	.LVL143:
+  73:Src/bldc.c    ****       *w = 0;
+ 967              		.loc 1 73 0
+ 968 0544 1846     		mov	r0, r3
+ 969              	.LVL144:
+  72:Src/bldc.c    ****       *v = 0;
+ 970              		.loc 1 72 0
+ 971 0546 1F46     		mov	r7, r3
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 24
+
+
+ 972 0548 01E0     		b	.L45
+ 973              	.LVL145:
+ 974              	.L85:
+ 975              	.LBE24:
+ 976              	.LBE28:
+ 977              	.LBB29:
+ 978              	.LBB27:
+  44:Src/bldc.c    ****       break;
+ 979              		.loc 1 44 0
+ 980 054a 3B46     		mov	r3, r7
+ 981              	.LVL146:
+  42:Src/bldc.c    ****       *v = pwm;
+ 982              		.loc 1 42 0
+ 983 054c 0027     		movs	r7, #0
+ 984              	.LVL147:
+ 985              	.L45:
+ 986              	.LBE27:
+ 987              	.LBE29:
+ 257:Src/bldc.c    ****   }
+ 258:Src/bldc.c    ****   ul += weakul;
+ 988              		.loc 1 258 0
+ 989 054e 3D44     		add	r5, r5, r7
+ 990              	.LVL148:
+ 259:Src/bldc.c    ****   vl += weakvl;
+ 991              		.loc 1 259 0
+ 992 0550 0444     		add	r4, r4, r0
+ 993              	.LVL149:
+ 260:Src/bldc.c    ****   wl += weakwl;
+ 994              		.loc 1 260 0
+ 995 0552 03EB0E00 		add	r0, r3, lr
+ 996              	.LVL150:
+ 261:Src/bldc.c    **** 
+ 262:Src/bldc.c    ****   int weakur, weakvr, weakwr;
+ 263:Src/bldc.c    ****   if (pwmr > 0) {
+ 997              		.loc 1 263 0
+ 998 0556 684B     		ldr	r3, .L103+12
+ 999              	.LVL151:
+ 1000 0558 1B68     		ldr	r3, [r3]
+ 1001 055a 002B     		cmp	r3, #0
+ 1002 055c 35DD     		ble	.L60
+ 264:Src/bldc.c    ****     blockPWM(weakr, (posr+5) % 6, &weakur, &weakvr, &weakwr);
+ 1003              		.loc 1 264 0
+ 1004 055e 674B     		ldr	r3, .L103+16
+ 1005 0560 D3F800E0 		ldr	lr, [r3]
+ 1006 0564 664B     		ldr	r3, .L103+20
+ 1007 0566 1F68     		ldr	r7, [r3]
+ 1008              	.LVL152:
+ 1009 0568 0537     		adds	r7, r7, #5
+ 1010 056a 624B     		ldr	r3, .L103+8
+ 1011 056c 83FB07C3 		smull	ip, r3, r3, r7
+ 1012 0570 A3EBE773 		sub	r3, r3, r7, asr #31
+ 1013 0574 03EB4303 		add	r3, r3, r3, lsl #1
+ 1014 0578 4FEA430C 		lsl	ip, r3, #1
+ 1015 057c CCEB0703 		rsb	r3, ip, r7
+ 1016              	.LVL153:
+ 1017              	.LBB30:
+ 1018              	.LBB31:
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 25
+
+
+  40:Src/bldc.c    ****     case 0:
+ 1019              		.loc 1 40 0
+ 1020 0580 052B     		cmp	r3, #5
+ 1021 0582 54D8     		bhi	.L86
+ 1022 0584 DFE803F0 		tbb	[pc, r3]
+ 1023              	.L63:
+ 1024 0588 03       		.byte	(.L62-.L63)/2
+ 1025 0589 07       		.byte	(.L64-.L63)/2
+ 1026 058a 0B       		.byte	(.L65-.L63)/2
+ 1027 058b 11       		.byte	(.L66-.L63)/2
+ 1028 058c 16       		.byte	(.L67-.L63)/2
+ 1029 058d 1B       		.byte	(.L68-.L63)/2
+ 1030              		.p2align 1
+ 1031              	.L62:
+ 1032              	.LVL154:
+  44:Src/bldc.c    ****       break;
+ 1033              		.loc 1 44 0
+ 1034 058e CEF10003 		rsb	r3, lr, #0
+ 1035              	.LVL155:
+  42:Src/bldc.c    ****       *v = pwm;
+ 1036              		.loc 1 42 0
+ 1037 0592 0027     		movs	r7, #0
+ 1038 0594 51E0     		b	.L61
+ 1039              	.LVL156:
+ 1040              	.L64:
+  47:Src/bldc.c    ****       *v = pwm;
+ 1041              		.loc 1 47 0
+ 1042 0596 CEF10007 		rsb	r7, lr, #0
+ 1043              	.LVL157:
+  49:Src/bldc.c    ****       break;
+ 1044              		.loc 1 49 0
+ 1045 059a 0023     		movs	r3, #0
+ 1046              	.LVL158:
+ 1047 059c 4DE0     		b	.L61
+ 1048              	.LVL159:
+ 1049              	.L65:
+  52:Src/bldc.c    ****       *v = 0;
+ 1050              		.loc 1 52 0
+ 1051 059e CEF10007 		rsb	r7, lr, #0
+ 1052              	.LVL160:
+  54:Src/bldc.c    ****       break;
+ 1053              		.loc 1 54 0
+ 1054 05a2 7346     		mov	r3, lr
+ 1055              	.LVL161:
+  53:Src/bldc.c    ****       *w = pwm;
+ 1056              		.loc 1 53 0
+ 1057 05a4 4FF0000E 		mov	lr, #0
+ 1058              	.LVL162:
+ 1059 05a8 47E0     		b	.L61
+ 1060              	.LVL163:
+ 1061              	.L66:
+  59:Src/bldc.c    ****       break;
+ 1062              		.loc 1 59 0
+ 1063 05aa 7346     		mov	r3, lr
+ 1064              	.LVL164:
+  58:Src/bldc.c    ****       *w = pwm;
+ 1065              		.loc 1 58 0
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 26
+
+
+ 1066 05ac CEF1000E 		rsb	lr, lr, #0
+ 1067              	.LVL165:
+  57:Src/bldc.c    ****       *v = -pwm;
+ 1068              		.loc 1 57 0
+ 1069 05b0 0027     		movs	r7, #0
+ 1070 05b2 42E0     		b	.L61
+ 1071              	.LVL166:
+ 1072              	.L67:
+  62:Src/bldc.c    ****       *v = -pwm;
+ 1073              		.loc 1 62 0
+ 1074 05b4 7746     		mov	r7, lr
+  63:Src/bldc.c    ****       *w = 0;
+ 1075              		.loc 1 63 0
+ 1076 05b6 CEF1000E 		rsb	lr, lr, #0
+ 1077              	.LVL167:
+  64:Src/bldc.c    ****       break;
+ 1078              		.loc 1 64 0
+ 1079 05ba 0023     		movs	r3, #0
+ 1080              	.LVL168:
+ 1081 05bc 3DE0     		b	.L61
+ 1082              	.LVL169:
+ 1083              	.L68:
+  69:Src/bldc.c    ****       break;
+ 1084              		.loc 1 69 0
+ 1085 05be CEF10003 		rsb	r3, lr, #0
+ 1086              	.LVL170:
+  67:Src/bldc.c    ****       *v = 0;
+ 1087              		.loc 1 67 0
+ 1088 05c2 7746     		mov	r7, lr
+  68:Src/bldc.c    ****       *w = -pwm;
+ 1089              		.loc 1 68 0
+ 1090 05c4 4FF0000E 		mov	lr, #0
+ 1091              	.LVL171:
+ 1092 05c8 37E0     		b	.L61
+ 1093              	.LVL172:
+ 1094              	.L60:
+ 1095              	.LBE31:
+ 1096              	.LBE30:
+ 265:Src/bldc.c    ****   } else {
+ 266:Src/bldc.c    ****     blockPWM(-weakr, (posr+1) % 6, &weakur, &weakvr, &weakwr);
+ 1097              		.loc 1 266 0
+ 1098 05ca 4C4B     		ldr	r3, .L103+16
+ 1099 05cc 1F68     		ldr	r7, [r3]
+ 1100              	.LVL173:
+ 1101 05ce C7F1000E 		rsb	lr, r7, #0
+ 1102 05d2 4B4B     		ldr	r3, .L103+20
+ 1103 05d4 1B68     		ldr	r3, [r3]
+ 1104 05d6 03F1010C 		add	ip, r3, #1
+ 1105 05da 464B     		ldr	r3, .L103+8
+ 1106 05dc 83FB0C83 		smull	r8, r3, r3, ip
+ 1107 05e0 A3EBEC73 		sub	r3, r3, ip, asr #31
+ 1108 05e4 03EB4303 		add	r3, r3, r3, lsl #1
+ 1109 05e8 4FEA4308 		lsl	r8, r3, #1
+ 1110 05ec C8EB0C03 		rsb	r3, r8, ip
+ 1111              	.LVL174:
+ 1112              	.LBB33:
+ 1113              	.LBB34:
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 27
+
+
+  40:Src/bldc.c    ****     case 0:
+ 1114              		.loc 1 40 0
+ 1115 05f0 052B     		cmp	r3, #5
+ 1116 05f2 04D8     		bhi	.L69
+ 1117 05f4 DFE803F0 		tbb	[pc, r3]
+ 1118              	.L70:
+ 1119 05f8 1F       		.byte	(.L87-.L70)/2
+ 1120 05f9 07       		.byte	(.L71-.L70)/2
+ 1121 05fa 09       		.byte	(.L72-.L70)/2
+ 1122 05fb 0D       		.byte	(.L73-.L70)/2
+ 1123 05fc 11       		.byte	(.L74-.L70)/2
+ 1124 05fd 16       		.byte	(.L75-.L70)/2
+ 1125              		.p2align 1
+ 1126              	.L69:
+  74:Src/bldc.c    ****   }
+ 1127              		.loc 1 74 0
+ 1128 05fe 0023     		movs	r3, #0
+ 1129              	.LVL175:
+  73:Src/bldc.c    ****       *w = 0;
+ 1130              		.loc 1 73 0
+ 1131 0600 9E46     		mov	lr, r3
+ 1132              	.LVL176:
+  72:Src/bldc.c    ****       *v = 0;
+ 1133              		.loc 1 72 0
+ 1134 0602 1F46     		mov	r7, r3
+ 1135              	.LVL177:
+ 1136 0604 19E0     		b	.L61
+ 1137              	.LVL178:
+ 1138              	.L71:
+  49:Src/bldc.c    ****       break;
+ 1139              		.loc 1 49 0
+ 1140 0606 0023     		movs	r3, #0
+ 1141              	.LVL179:
+ 1142 0608 17E0     		b	.L61
+ 1143              	.LVL180:
+ 1144              	.L72:
+  54:Src/bldc.c    ****       break;
+ 1145              		.loc 1 54 0
+ 1146 060a 7346     		mov	r3, lr
+ 1147              	.LVL181:
+  53:Src/bldc.c    ****       *w = pwm;
+ 1148              		.loc 1 53 0
+ 1149 060c 4FF0000E 		mov	lr, #0
+ 1150              	.LVL182:
+ 1151 0610 13E0     		b	.L61
+ 1152              	.LVL183:
+ 1153              	.L73:
+  59:Src/bldc.c    ****       break;
+ 1154              		.loc 1 59 0
+ 1155 0612 7346     		mov	r3, lr
+ 1156              	.LVL184:
+  58:Src/bldc.c    ****       *w = pwm;
+ 1157              		.loc 1 58 0
+ 1158 0614 BE46     		mov	lr, r7
+ 1159              	.LVL185:
+  57:Src/bldc.c    ****       *v = -pwm;
+ 1160              		.loc 1 57 0
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 28
+
+
+ 1161 0616 0027     		movs	r7, #0
+ 1162              	.LVL186:
+ 1163 0618 0FE0     		b	.L61
+ 1164              	.LVL187:
+ 1165              	.L74:
+ 1166 061a 3B46     		mov	r3, r7
+ 1167              	.LVL188:
+  62:Src/bldc.c    ****       *v = -pwm;
+ 1168              		.loc 1 62 0
+ 1169 061c 7746     		mov	r7, lr
+ 1170              	.LVL189:
+  63:Src/bldc.c    ****       *w = 0;
+ 1171              		.loc 1 63 0
+ 1172 061e 9E46     		mov	lr, r3
+ 1173              	.LVL190:
+  64:Src/bldc.c    ****       break;
+ 1174              		.loc 1 64 0
+ 1175 0620 0023     		movs	r3, #0
+ 1176              	.LVL191:
+ 1177 0622 0AE0     		b	.L61
+ 1178              	.LVL192:
+ 1179              	.L75:
+  69:Src/bldc.c    ****       break;
+ 1180              		.loc 1 69 0
+ 1181 0624 3B46     		mov	r3, r7
+ 1182              	.LVL193:
+  67:Src/bldc.c    ****       *v = 0;
+ 1183              		.loc 1 67 0
+ 1184 0626 7746     		mov	r7, lr
+ 1185              	.LVL194:
+  68:Src/bldc.c    ****       *w = -pwm;
+ 1186              		.loc 1 68 0
+ 1187 0628 4FF0000E 		mov	lr, #0
+ 1188              	.LVL195:
+ 1189 062c 05E0     		b	.L61
+ 1190              	.LVL196:
+ 1191              	.L86:
+ 1192              	.LBE34:
+ 1193              	.LBE33:
+ 1194              	.LBB36:
+ 1195              	.LBB32:
+  74:Src/bldc.c    ****   }
+ 1196              		.loc 1 74 0
+ 1197 062e 0023     		movs	r3, #0
+ 1198              	.LVL197:
+  73:Src/bldc.c    ****       *w = 0;
+ 1199              		.loc 1 73 0
+ 1200 0630 9E46     		mov	lr, r3
+ 1201              	.LVL198:
+  72:Src/bldc.c    ****       *v = 0;
+ 1202              		.loc 1 72 0
+ 1203 0632 1F46     		mov	r7, r3
+ 1204 0634 01E0     		b	.L61
+ 1205              	.LVL199:
+ 1206              	.L87:
+ 1207              	.LBE32:
+ 1208              	.LBE36:
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 29
+
+
+ 1209              	.LBB37:
+ 1210              	.LBB35:
+  44:Src/bldc.c    ****       break;
+ 1211              		.loc 1 44 0
+ 1212 0636 3B46     		mov	r3, r7
+ 1213              	.LVL200:
+  42:Src/bldc.c    ****       *v = pwm;
+ 1214              		.loc 1 42 0
+ 1215 0638 0027     		movs	r7, #0
+ 1216              	.LVL201:
+ 1217              	.L61:
+ 1218              	.LBE35:
+ 1219              	.LBE37:
+ 267:Src/bldc.c    ****   }
+ 268:Src/bldc.c    ****   ur += weakur;
+ 1220              		.loc 1 268 0
+ 1221 063a 3944     		add	r1, r1, r7
+ 1222              	.LVL202:
+ 269:Src/bldc.c    ****   vr += weakvr;
+ 1223              		.loc 1 269 0
+ 1224 063c 7244     		add	r2, r2, lr
+ 1225              	.LVL203:
+ 270:Src/bldc.c    ****   wr += weakwr;
+ 1226              		.loc 1 270 0
+ 1227 063e 3344     		add	r3, r3, r6
+ 1228              	.LVL204:
+ 271:Src/bldc.c    **** 
+ 272:Src/bldc.c    ****   LEFT_TIM->LEFT_TIM_U = CLAMP(ul + pwm_res / 2, 10, pwm_res-10);
+ 1229              		.loc 1 272 0
+ 1230 0640 05F57A75 		add	r5, r5, #1000
+ 1231              	.LVL205:
+ 1232 0644 40F2C676 		movw	r6, #1990
+ 1233 0648 B542     		cmp	r5, r6
+ 1234 064a 03DC     		bgt	.L88
+ 1235              		.loc 1 272 0 is_stmt 0 discriminator 1
+ 1236 064c 0A2D     		cmp	r5, #10
+ 1237 064e B8BF     		it	lt
+ 1238 0650 0A25     		movlt	r5, #10
+ 1239              	.LVL206:
+ 1240 0652 01E0     		b	.L76
+ 1241              	.LVL207:
+ 1242              	.L88:
+ 1243              		.loc 1 272 0
+ 1244 0654 40F2C675 		movw	r5, #1990
+ 1245              	.LVL208:
+ 1246              	.L76:
+ 1247              		.loc 1 272 0 discriminator 4
+ 1248 0658 2A4E     		ldr	r6, .L103+24
+ 1249 065a 7563     		str	r5, [r6, #52]
+ 273:Src/bldc.c    ****   LEFT_TIM->LEFT_TIM_V = CLAMP(vl + pwm_res / 2, 10, pwm_res-10);
+ 1250              		.loc 1 273 0 is_stmt 1 discriminator 4
+ 1251 065c 04F57A74 		add	r4, r4, #1000
+ 1252              	.LVL209:
+ 1253 0660 40F2C675 		movw	r5, #1990
+ 1254 0664 AC42     		cmp	r4, r5
+ 1255 0666 03DC     		bgt	.L89
+ 1256              		.loc 1 273 0 is_stmt 0 discriminator 1
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 30
+
+
+ 1257 0668 0A2C     		cmp	r4, #10
+ 1258 066a B8BF     		it	lt
+ 1259 066c 0A24     		movlt	r4, #10
+ 1260              	.LVL210:
+ 1261 066e 01E0     		b	.L77
+ 1262              	.LVL211:
+ 1263              	.L89:
+ 1264              		.loc 1 273 0
+ 1265 0670 40F2C674 		movw	r4, #1990
+ 1266              	.LVL212:
+ 1267              	.L77:
+ 1268              		.loc 1 273 0 discriminator 4
+ 1269 0674 234D     		ldr	r5, .L103+24
+ 1270 0676 AC63     		str	r4, [r5, #56]
+ 274:Src/bldc.c    ****   LEFT_TIM->LEFT_TIM_W = CLAMP(wl + pwm_res / 2, 10, pwm_res-10);
+ 1271              		.loc 1 274 0 is_stmt 1 discriminator 4
+ 1272 0678 00F57A70 		add	r0, r0, #1000
+ 1273              	.LVL213:
+ 1274 067c 40F2C674 		movw	r4, #1990
+ 1275 0680 A042     		cmp	r0, r4
+ 1276 0682 03DC     		bgt	.L90
+ 1277              		.loc 1 274 0 is_stmt 0 discriminator 1
+ 1278 0684 0A28     		cmp	r0, #10
+ 1279 0686 B8BF     		it	lt
+ 1280 0688 0A20     		movlt	r0, #10
+ 1281              	.LVL214:
+ 1282 068a 01E0     		b	.L78
+ 1283              	.LVL215:
+ 1284              	.L90:
+ 1285              		.loc 1 274 0
+ 1286 068c 40F2C670 		movw	r0, #1990
+ 1287              	.LVL216:
+ 1288              	.L78:
+ 1289              		.loc 1 274 0 discriminator 4
+ 1290 0690 1C4C     		ldr	r4, .L103+24
+ 1291 0692 E063     		str	r0, [r4, #60]
+ 275:Src/bldc.c    **** 
+ 276:Src/bldc.c    ****   RIGHT_TIM->RIGHT_TIM_U = CLAMP(ur + pwm_res / 2, 10, pwm_res-10);
+ 1292              		.loc 1 276 0 is_stmt 1 discriminator 4
+ 1293 0694 01F57A71 		add	r1, r1, #1000
+ 1294              	.LVL217:
+ 1295 0698 40F2C670 		movw	r0, #1990
+ 1296 069c 8142     		cmp	r1, r0
+ 1297 069e 03DC     		bgt	.L91
+ 1298              		.loc 1 276 0 is_stmt 0 discriminator 1
+ 1299 06a0 0A29     		cmp	r1, #10
+ 1300 06a2 B8BF     		it	lt
+ 1301 06a4 0A21     		movlt	r1, #10
+ 1302              	.LVL218:
+ 1303 06a6 01E0     		b	.L79
+ 1304              	.LVL219:
+ 1305              	.L91:
+ 1306              		.loc 1 276 0
+ 1307 06a8 40F2C671 		movw	r1, #1990
+ 1308              	.LVL220:
+ 1309              	.L79:
+ 1310              		.loc 1 276 0 discriminator 4
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 31
+
+
+ 1311 06ac 1648     		ldr	r0, .L103+28
+ 1312 06ae 4163     		str	r1, [r0, #52]
+ 277:Src/bldc.c    ****   RIGHT_TIM->RIGHT_TIM_V = CLAMP(vr + pwm_res / 2, 10, pwm_res-10);
+ 1313              		.loc 1 277 0 is_stmt 1 discriminator 4
+ 1314 06b0 02F57A72 		add	r2, r2, #1000
+ 1315              	.LVL221:
+ 1316 06b4 40F2C671 		movw	r1, #1990
+ 1317 06b8 8A42     		cmp	r2, r1
+ 1318 06ba 03DC     		bgt	.L92
+ 1319              		.loc 1 277 0 is_stmt 0 discriminator 1
+ 1320 06bc 0A2A     		cmp	r2, #10
+ 1321 06be B8BF     		it	lt
+ 1322 06c0 0A22     		movlt	r2, #10
+ 1323              	.LVL222:
+ 1324 06c2 01E0     		b	.L80
+ 1325              	.LVL223:
+ 1326              	.L92:
+ 1327              		.loc 1 277 0
+ 1328 06c4 40F2C672 		movw	r2, #1990
+ 1329              	.LVL224:
+ 1330              	.L80:
+ 1331              		.loc 1 277 0 discriminator 4
+ 1332 06c8 0F49     		ldr	r1, .L103+28
+ 1333 06ca 8A63     		str	r2, [r1, #56]
+ 278:Src/bldc.c    ****   RIGHT_TIM->RIGHT_TIM_W = CLAMP(wr + pwm_res / 2, 10, pwm_res-10);
+ 1334              		.loc 1 278 0 is_stmt 1 discriminator 4
+ 1335 06cc 03F57A73 		add	r3, r3, #1000
+ 1336              	.LVL225:
+ 1337 06d0 40F2C672 		movw	r2, #1990
+ 1338 06d4 9342     		cmp	r3, r2
+ 1339 06d6 03DC     		bgt	.L93
+ 1340              		.loc 1 278 0 is_stmt 0 discriminator 1
+ 1341 06d8 0A2B     		cmp	r3, #10
+ 1342 06da B8BF     		it	lt
+ 1343 06dc 0A23     		movlt	r3, #10
+ 1344              	.LVL226:
+ 1345 06de 01E0     		b	.L81
+ 1346              	.LVL227:
+ 1347              	.L93:
+ 1348              		.loc 1 278 0
+ 1349 06e0 40F2C673 		movw	r3, #1990
+ 1350              	.LVL228:
+ 1351              	.L81:
+ 1352              		.loc 1 278 0 discriminator 4
+ 1353 06e4 084A     		ldr	r2, .L103+28
+ 1354 06e6 D363     		str	r3, [r2, #60]
+ 1355              	.LVL229:
+ 1356 06e8 BDE8F081 		pop	{r4, r5, r6, r7, r8, pc}
+ 1357              	.L104:
+ 1358              		.align	2
+ 1359              	.L103:
+ 1360 06ec 00000000 		.word	.LANCHOR18
+ 1361 06f0 00000000 		.word	.LANCHOR11
+ 1362 06f4 ABAAAA2A 		.word	715827883
+ 1363 06f8 00000000 		.word	.LANCHOR17
+ 1364 06fc 00000000 		.word	.LANCHOR19
+ 1365 0700 00000000 		.word	.LANCHOR12
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 32
+
+
+ 1366 0704 00340140 		.word	1073820672
+ 1367 0708 002C0140 		.word	1073818624
+ 1368              		.cfi_endproc
+ 1369              	.LFE66:
+ 1371              		.global	vel
+ 1372              		.global	max_time
+ 1373              		.global	timer
+ 1374              		.global	last_pos
+ 1375              		.global	curl
+ 1376              		.global	batteryVoltage
+ 1377              		.global	offsetdcr
+ 1378              		.global	offsetdcl
+ 1379              		.global	offsetrr2
+ 1380              		.global	offsetrr1
+ 1381              		.global	offsetrl2
+ 1382              		.global	offsetrl1
+ 1383              		.global	offsetcount
+ 1384              		.global	buzzerTimer
+ 1385              		.global	hall_to_pos
+ 1386              		.global	pwm_res
+ 1387              		.global	enable
+ 1388              		.global	buzzerPattern
+ 1389              		.global	buzzerFreq
+ 1390              		.global	weakr
+ 1391              		.global	weakl
+ 1392              		.global	pwmr
+ 1393              		.global	pwml
+ 1394              		.global	posr
+ 1395              		.global	posl
+ 1396              		.section	.bss.vel,"aw",%nobits
+ 1397              		.align	2
+ 1400              	vel:
+ 1401 0000 00000000 		.space	4
+ 1402              		.section	.bss.offsetcount,"aw",%nobits
+ 1403              		.align	2
+ 1404              		.set	.LANCHOR0,. + 0
+ 1407              	offsetcount:
+ 1408 0000 00000000 		.space	4
+ 1409              		.section	.data.offsetrl2,"aw",%progbits
+ 1410              		.align	2
+ 1411              		.set	.LANCHOR2,. + 0
+ 1414              	offsetrl2:
+ 1415 0000 D0070000 		.word	2000
+ 1416              		.section	.data.offsetrl1,"aw",%progbits
+ 1417              		.align	2
+ 1418              		.set	.LANCHOR1,. + 0
+ 1421              	offsetrl1:
+ 1422 0000 D0070000 		.word	2000
+ 1423              		.section	.rodata.max_time,"a",%progbits
+ 1424              		.align	2
+ 1427              	max_time:
+ 1428 0000 40060000 		.word	1600
+ 1429              		.section	.bss.buzzerPattern,"aw",%nobits
+ 1430              		.align	2
+ 1431              		.set	.LANCHOR15,. + 0
+ 1434              	buzzerPattern:
+ 1435 0000 00000000 		.space	4
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 33
+
+
+ 1436              		.section	.rodata.hall_to_pos,"a",%progbits
+ 1437              		.align	2
+ 1438              		.set	.LANCHOR10,. + 0
+ 1441              	hall_to_pos:
+ 1442 0000 00       		.byte	0
+ 1443 0001 00       		.byte	0
+ 1444 0002 02       		.byte	2
+ 1445 0003 01       		.byte	1
+ 1446 0004 04       		.byte	4
+ 1447 0005 05       		.byte	5
+ 1448 0006 03       		.byte	3
+ 1449 0007 00       		.byte	0
+ 1450              		.section	.bss.weakl,"aw",%nobits
+ 1451              		.align	2
+ 1452              		.set	.LANCHOR18,. + 0
+ 1455              	weakl:
+ 1456 0000 00000000 		.space	4
+ 1457              		.section	.bss.timer,"aw",%nobits
+ 1458              		.align	2
+ 1461              	timer:
+ 1462 0000 00000000 		.space	4
+ 1463              		.section	.bss.posl,"aw",%nobits
+ 1464              		.align	2
+ 1465              		.set	.LANCHOR11,. + 0
+ 1468              	posl:
+ 1469 0000 00000000 		.space	4
+ 1470              		.section	.bss.weakr,"aw",%nobits
+ 1471              		.align	2
+ 1472              		.set	.LANCHOR19,. + 0
+ 1475              	weakr:
+ 1476 0000 00000000 		.space	4
+ 1477              		.section	.data.offsetrr2,"aw",%progbits
+ 1478              		.align	2
+ 1479              		.set	.LANCHOR4,. + 0
+ 1482              	offsetrr2:
+ 1483 0000 D0070000 		.word	2000
+ 1484              		.section	.bss.posr,"aw",%nobits
+ 1485              		.align	2
+ 1486              		.set	.LANCHOR12,. + 0
+ 1489              	posr:
+ 1490 0000 00000000 		.space	4
+ 1491              		.section	.bss.enable,"aw",%nobits
+ 1492              		.set	.LANCHOR9,. + 0
+ 1495              	enable:
+ 1496 0000 00       		.space	1
+ 1497              		.section	.bss.pwml,"aw",%nobits
+ 1498              		.align	2
+ 1499              		.set	.LANCHOR16,. + 0
+ 1502              	pwml:
+ 1503 0000 00000000 		.space	4
+ 1504              		.section	.bss.buzzerFreq,"aw",%nobits
+ 1505              		.align	2
+ 1506              		.set	.LANCHOR14,. + 0
+ 1509              	buzzerFreq:
+ 1510 0000 00000000 		.space	4
+ 1511              		.section	.data.offsetrr1,"aw",%progbits
+ 1512              		.align	2
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 34
+
+
+ 1513              		.set	.LANCHOR3,. + 0
+ 1516              	offsetrr1:
+ 1517 0000 D0070000 		.word	2000
+ 1518              		.section	.bss.pwmr,"aw",%nobits
+ 1519              		.align	2
+ 1520              		.set	.LANCHOR17,. + 0
+ 1523              	pwmr:
+ 1524 0000 00000000 		.space	4
+ 1525              		.section	.bss.buzzerTimer,"aw",%nobits
+ 1526              		.align	2
+ 1527              		.set	.LANCHOR7,. + 0
+ 1530              	buzzerTimer:
+ 1531 0000 00000000 		.space	4
+ 1532              		.section	.data.batteryVoltage,"aw",%progbits
+ 1533              		.align	2
+ 1534              		.set	.LANCHOR8,. + 0
+ 1537              	batteryVoltage:
+ 1538 0000 00002042 		.word	1109393408
+ 1539              		.section	.rodata.pwm_res,"a",%progbits
+ 1540              		.align	2
+ 1543              	pwm_res:
+ 1544 0000 D0070000 		.word	2000
+ 1545              		.section	.bss.curl,"aw",%nobits
+ 1546              		.align	2
+ 1547              		.set	.LANCHOR13,. + 0
+ 1550              	curl:
+ 1551 0000 00000000 		.space	4
+ 1552              		.section	.data.offsetdcl,"aw",%progbits
+ 1553              		.align	2
+ 1554              		.set	.LANCHOR5,. + 0
+ 1557              	offsetdcl:
+ 1558 0000 D0070000 		.word	2000
+ 1559              		.section	.bss.last_pos,"aw",%nobits
+ 1560              		.align	2
+ 1563              	last_pos:
+ 1564 0000 00000000 		.space	4
+ 1565              		.section	.data.offsetdcr,"aw",%progbits
+ 1566              		.align	2
+ 1567              		.set	.LANCHOR6,. + 0
+ 1570              	offsetdcr:
+ 1571 0000 D0070000 		.word	2000
+ 1572              		.text
+ 1573              	.Letext0:
+ 1574              		.file 2 "d:\\stm32\\gcc-arm\\arm-none-eabi\\include\\machine\\_default_types.h"
+ 1575              		.file 3 "d:\\stm32\\gcc-arm\\arm-none-eabi\\include\\sys\\_stdint.h"
+ 1576              		.file 4 "Drivers/CMSIS/Device/ST/STM32F1xx/Include/stm32f103xe.h"
+ 1577              		.file 5 "Inc/defines.h"
+ 1578              		.file 6 "Drivers/CMSIS/Include/core_cm3.h"
+ 1579              		.file 7 "Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_gpio.h"
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 35
+
+
+DEFINED SYMBOLS
+                            *ABS*:00000000 bldc.c
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:29     .text.DMA1_Channel1_IRQHandler:00000000 $t
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:34     .text.DMA1_Channel1_IRQHandler:00000000 DMA1_Channel1_IRQHandler
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:314    .text.DMA1_Channel1_IRQHandler:000001f0 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:341    .text.DMA1_Channel1_IRQHandler:00000254 $t
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:462    .text.DMA1_Channel1_IRQHandler:00000326 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:468    .text.DMA1_Channel1_IRQHandler:0000032c $t
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:575    .text.DMA1_Channel1_IRQHandler:000003ac $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:581    .text.DMA1_Channel1_IRQHandler:000003b2 $t
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:666    .text.DMA1_Channel1_IRQHandler:000003fe $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:672    .text.DMA1_Channel1_IRQHandler:00000404 $t
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:770    .text.DMA1_Channel1_IRQHandler:00000466 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:776    .text.DMA1_Channel1_IRQHandler:0000046c $t
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:842    .text.DMA1_Channel1_IRQHandler:00000498 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:866    .text.DMA1_Channel1_IRQHandler:000004e4 $t
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:887    .text.DMA1_Channel1_IRQHandler:00000510 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:893    .text.DMA1_Channel1_IRQHandler:00000516 $t
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1024   .text.DMA1_Channel1_IRQHandler:00000588 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1030   .text.DMA1_Channel1_IRQHandler:0000058e $t
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1119   .text.DMA1_Channel1_IRQHandler:000005f8 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1125   .text.DMA1_Channel1_IRQHandler:000005fe $t
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1360   .text.DMA1_Channel1_IRQHandler:000006ec $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1400   .bss.vel:00000000 vel
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1427   .rodata.max_time:00000000 max_time
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1461   .bss.timer:00000000 timer
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1563   .bss.last_pos:00000000 last_pos
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1550   .bss.curl:00000000 curl
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1537   .data.batteryVoltage:00000000 batteryVoltage
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1570   .data.offsetdcr:00000000 offsetdcr
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1557   .data.offsetdcl:00000000 offsetdcl
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1482   .data.offsetrr2:00000000 offsetrr2
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1516   .data.offsetrr1:00000000 offsetrr1
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1414   .data.offsetrl2:00000000 offsetrl2
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1421   .data.offsetrl1:00000000 offsetrl1
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1407   .bss.offsetcount:00000000 offsetcount
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1530   .bss.buzzerTimer:00000000 buzzerTimer
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1441   .rodata.hall_to_pos:00000000 hall_to_pos
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1543   .rodata.pwm_res:00000000 pwm_res
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1495   .bss.enable:00000000 enable
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1434   .bss.buzzerPattern:00000000 buzzerPattern
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1509   .bss.buzzerFreq:00000000 buzzerFreq
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1475   .bss.weakr:00000000 weakr
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1455   .bss.weakl:00000000 weakl
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1523   .bss.pwmr:00000000 pwmr
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1502   .bss.pwml:00000000 pwml
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1489   .bss.posr:00000000 posr
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1468   .bss.posl:00000000 posl
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1397   .bss.vel:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1403   .bss.offsetcount:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1410   .data.offsetrl2:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1417   .data.offsetrl1:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1424   .rodata.max_time:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1430   .bss.buzzerPattern:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1437   .rodata.hall_to_pos:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1451   .bss.weakl:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1458   .bss.timer:00000000 $d
+ARM GAS  C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s 			page 36
+
+
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1464   .bss.posl:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1471   .bss.weakr:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1478   .data.offsetrr2:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1485   .bss.posr:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1496   .bss.enable:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1498   .bss.pwml:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1505   .bss.buzzerFreq:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1512   .data.offsetrr1:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1519   .bss.pwmr:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1526   .bss.buzzerTimer:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1533   .data.batteryVoltage:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1540   .rodata.pwm_res:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1546   .bss.curl:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1553   .data.offsetdcl:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1560   .bss.last_pos:00000000 $d
+C:\Users\Areg\AppData\Local\Temp\ccmNG11h.s:1566   .data.offsetdcr:00000000 $d
+                     .debug_frame:00000010 $d
+
+UNDEFINED SYMBOLS
+__aeabi_f2d
+__aeabi_dmul
+__aeabi_ui2f
+__aeabi_fmul
+__aeabi_dadd
+__aeabi_d2f
+__aeabi_i2d
+__aeabi_dcmplt
+__aeabi_dcmpgt
+adc_buffer
+timeout
+HAL_GPIO_TogglePin
+HAL_GPIO_WritePin
